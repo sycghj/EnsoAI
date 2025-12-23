@@ -1,26 +1,15 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectPopup,
-  SelectItem,
-} from '@/components/ui/select';
 import {
   MessageSquare,
   FileCode,
   Terminal,
   GitBranch,
   Plus,
-  Sparkles,
-  Paperclip,
-  Mic,
-  ArrowUp,
   FolderOpen,
 } from 'lucide-react';
 import { OpenInMenu } from '@/components/app/OpenInMenu';
+import { ClaudeTerminal } from '@/components/chat/ClaudeTerminal';
 
 const buttonVariants = {
   initial: { scale: 0, opacity: 0 },
@@ -162,69 +151,20 @@ export function MainContent({
 
       {/* Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {activeTab === 'chat' && <ChatView />}
+        {activeTab === 'chat' && (
+          worktreePath ? (
+            <ClaudeTerminal key={worktreePath} cwd={worktreePath} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <p>请先选择一个 Worktree</p>
+            </div>
+          )
+        )}
         {activeTab === 'file' && <FilePlaceholder />}
         {activeTab === 'terminal' && <TerminalPlaceholder />}
         {activeTab === 'source-control' && <SourceControlPlaceholder />}
       </div>
     </main>
-  );
-}
-
-function ChatView() {
-  return (
-    <div className="flex flex-1 flex-col">
-      {/* Chat history */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-          <p>chat history</p>
-        </div>
-      </div>
-
-      {/* Chat input */}
-      <div className="shrink-0 border-t p-4">
-        <div className="mx-auto max-w-3xl">
-          {/* Model selector */}
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Claude</span>
-            <span>·</span>
-            <span>Default</span>
-          </div>
-
-          {/* Input box */}
-          <div className="relative">
-            <div className="flex items-center gap-2 rounded-xl border bg-muted/30 px-4 py-3">
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              <input
-                type="text"
-                placeholder="Ask anything..."
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              />
-              <Select defaultValue="default">
-                <SelectTrigger className="h-8 w-auto gap-1 border-0 bg-transparent px-2 text-xs">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <SelectValue>Default (recommended)</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value="default">Default (recommended)</SelectItem>
-                  <SelectItem value="precise">Precise</SelectItem>
-                  <SelectItem value="creative">Creative</SelectItem>
-                </SelectPopup>
-              </Select>
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                <Mic className="h-4 w-4" />
-              </Button>
-              <Button size="icon" className="h-8 w-8 shrink-0 rounded-full">
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
