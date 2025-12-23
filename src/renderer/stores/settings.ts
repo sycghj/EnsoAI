@@ -9,12 +9,14 @@ interface SettingsState {
   fontFamily: string;
   terminalFontSize: number;
   terminalFontFamily: string;
+  terminalTheme: string; // Ghostty theme name
 
   setTheme: (theme: Theme) => void;
   setFontSize: (size: number) => void;
   setFontFamily: (family: string) => void;
   setTerminalFontSize: (size: number) => void;
   setTerminalFontFamily: (family: string) => void;
+  setTerminalTheme: (theme: string) => void;
 }
 
 // Apply theme to document
@@ -30,11 +32,12 @@ function applyTheme(theme: Theme) {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      theme: 'dark',
+      theme: 'system',
       fontSize: 14,
       fontFamily: 'Inter',
       terminalFontSize: 14,
       terminalFontFamily: 'JetBrains Mono',
+      terminalTheme: 'Dracula',
 
       setTheme: (theme) => {
         applyTheme(theme);
@@ -44,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       setFontFamily: (fontFamily) => set({ fontFamily }),
       setTerminalFontSize: (terminalFontSize) => set({ terminalFontSize }),
       setTerminalFontFamily: (terminalFontFamily) => set({ terminalFontFamily }),
+      setTerminalTheme: (terminalTheme) => set({ terminalTheme }),
     }),
     {
       name: 'enso-settings',

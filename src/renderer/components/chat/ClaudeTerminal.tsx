@@ -1,61 +1,14 @@
 import { useSettingsStore } from '@/stores/settings';
+import {
+  getXtermTheme,
+  defaultDarkTheme,
+  type XtermTheme,
+} from '@/lib/ghosttyTheme';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { type ITheme, Terminal } from '@xterm/xterm';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
-
-// Dark theme (Ayu Dark - from Ghostty config)
-const darkTheme: ITheme = {
-  background: '#1f2430',
-  foreground: '#cbccc6',
-  cursor: '#cbccc6',
-  cursorAccent: '#1f2430',
-  selectionBackground: '#cbccc6',
-  selectionForeground: '#1f2430',
-  black: '#212733',
-  red: '#f08778',
-  green: '#53bf97',
-  yellow: '#fdcc60',
-  blue: '#60b8d6',
-  magenta: '#ec7171',
-  cyan: '#98e6ca',
-  white: '#fafafa',
-  brightBlack: '#686868',
-  brightRed: '#f58c7d',
-  brightGreen: '#58c49c',
-  brightYellow: '#ffd165',
-  brightBlue: '#65bddb',
-  brightMagenta: '#f17676',
-  brightCyan: '#9debcf',
-  brightWhite: '#ffffff',
-};
-
-// Light theme (Ayu Light inspired)
-const lightTheme: ITheme = {
-  background: '#fafafa',
-  foreground: '#5c6166',
-  cursor: '#5c6166',
-  cursorAccent: '#fafafa',
-  selectionBackground: '#035bd626',
-  selectionForeground: '#5c6166',
-  black: '#55606d',
-  red: '#f07171',
-  green: '#86b300',
-  yellow: '#f2ae49',
-  blue: '#399ee6',
-  magenta: '#a37acc',
-  cyan: '#4cbf99',
-  white: '#c7c7c7',
-  brightBlack: '#abb0b6',
-  brightRed: '#f07171',
-  brightGreen: '#86b300',
-  brightYellow: '#f2ae49',
-  brightBlue: '#399ee6',
-  brightMagenta: '#a37acc',
-  brightCyan: '#4cbf99',
-  brightWhite: '#d8d8d8',
-};
 
 interface ClaudeTerminalProps {
   cwd?: string;
@@ -66,15 +19,12 @@ interface ClaudeTerminalProps {
   onExit?: () => void;
 }
 
-// Helper to check if dark mode is active
-function useIsDarkMode() {
-  const { theme } = useSettingsStore();
+// Hook to get terminal theme from settings (synchronous, uses embedded data)
+function useTerminalTheme(): XtermTheme {
+  const { terminalTheme } = useSettingsStore();
   return useMemo(() => {
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
-    // system
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  }, [theme]);
+    return getXtermTheme(terminalTheme) ?? defaultDarkTheme;
+  }, [terminalTheme]);
 }
 
 export function ClaudeTerminal({
@@ -87,8 +37,7 @@ export function ClaudeTerminal({
 }: ClaudeTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const isDarkMode = useIsDarkMode();
-  const currentTheme = isDarkMode ? darkTheme : lightTheme;
+  const currentTheme = useTerminalTheme();
   const fitAddonRef = useRef<FitAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -99,9 +48,13 @@ export function ClaudeTerminal({
   onInitializedRef.current = onInitialized;
   // Track if terminal has ever been activated (for lazy loading)
   const hasBeenActivatedRef = useRef(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const hasReceivedDataRef = useRef(false);
 
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || terminalRef.current) return;
+
+    setIsLoading(true);
 
     // Create xterm instance
     const terminal = new Terminal({
@@ -129,15 +82,17 @@ export function ClaudeTerminal({
     // Create pty session running claude command
     try {
       // First run: use --session-id to create; Resume: use --resume to restore
-      const args = sessionId
+      const claudeArgs = sessionId
         ? initialized
           ? ['--resume', sessionId]
           : ['--session-id', sessionId]
         : [];
+      // Use interactive login shell to get full user environment (node, nvm, etc.)
+      const claudeCommand = `claude ${claudeArgs.join(' ')}`;
       const ptyId = await window.electronAPI.terminal.create({
         cwd: cwd || window.electronAPI.env.HOME,
-        shell: 'claude',
-        args,
+        shell: '/bin/zsh',
+        args: ['-i', '-l', '-c', claudeCommand],
         cols: terminal.cols,
         rows: terminal.rows,
       });
@@ -152,6 +107,11 @@ export function ClaudeTerminal({
       // Handle data from pty
       const cleanup = window.electronAPI.terminal.onData((event) => {
         if (event.id === ptyId) {
+          // Hide loading on first data
+          if (!hasReceivedDataRef.current) {
+            hasReceivedDataRef.current = true;
+            setIsLoading(false);
+          }
           terminal.write(event.data);
         }
       });
@@ -172,6 +132,7 @@ export function ClaudeTerminal({
         }
       });
     } catch (error) {
+      setIsLoading(false);
       terminal.writeln(
         '\x1b[31mFailed to start claude. Make sure claude is installed and in PATH.\x1b[0m'
       );
@@ -263,10 +224,24 @@ export function ClaudeTerminal({
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full w-full px-[10px] py-[2px]"
-      style={{ backgroundColor: currentTheme.background }}
-    />
+    <div className="relative h-full w-full" style={{ backgroundColor: currentTheme.background }}>
+      <div
+        ref={containerRef}
+        className="h-full w-full px-[10px] py-[2px]"
+      />
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent"
+              style={{ color: currentTheme.foreground, opacity: 0.5 }}
+            />
+            <span style={{ color: currentTheme.foreground, opacity: 0.5 }} className="text-sm">
+              Loading Claude...
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
