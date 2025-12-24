@@ -35,3 +35,20 @@ export interface GitWorktree {
   isLocked: boolean;
   prunable: boolean;
 }
+
+// Source Control types
+// M=Modified, A=Added(staged), D=Deleted, R=Renamed, C=Copied, U=Untracked, X=Conflict
+export type FileChangeStatus = 'M' | 'A' | 'D' | 'R' | 'C' | 'U' | 'X';
+
+export interface FileChange {
+  path: string;
+  status: FileChangeStatus;
+  staged: boolean;
+  originalPath?: string; // for renames
+}
+
+export interface FileDiff {
+  path: string;
+  original: string; // HEAD version (empty for new files)
+  modified: string; // working tree version (empty for deleted files)
+}

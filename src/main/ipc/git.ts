@@ -78,4 +78,32 @@ export function registerGitHandlers(): void {
     // Clear the service cache after init to get fresh instance
     gitServices.delete(workdir);
   });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_FILE_CHANGES, async (_, workdir: string) => {
+    const git = getGitService(workdir);
+    return git.getFileChanges();
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_FILE_DIFF,
+    async (_, workdir: string, filePath: string, staged: boolean) => {
+      const git = getGitService(workdir);
+      return git.getFileDiff(filePath, staged);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.GIT_STAGE, async (_, workdir: string, paths: string[]) => {
+    const git = getGitService(workdir);
+    await git.stage(paths);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_UNSTAGE, async (_, workdir: string, paths: string[]) => {
+    const git = getGitService(workdir);
+    await git.unstage(paths);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_DISCARD, async (_, workdir: string, filePath: string) => {
+    const git = getGitService(workdir);
+    await git.discard(filePath);
+  });
 }

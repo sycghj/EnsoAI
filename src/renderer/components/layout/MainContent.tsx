@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { FileCode, FolderOpen, GitBranch, GitCommit, Plus, Sparkles, Terminal } from 'lucide-react';
+import { FileCode, FolderOpen, GitBranch, Plus, Sparkles, Terminal } from 'lucide-react';
 import { OpenInMenu } from '@/components/app/OpenInMenu';
 import { AgentPanel } from '@/components/chat/AgentPanel';
 import { FilePanel } from '@/components/files';
+import { SourceControlPanel } from '@/components/source-control';
 import { Button } from '@/components/ui/button';
 import {
   Empty,
@@ -158,26 +159,19 @@ export function MainContent({
         <div className={cn('absolute inset-0', activeTab !== 'terminal' && 'invisible')}>
           <TerminalPanel cwd={worktreePath} isActive={activeTab === 'terminal'} />
         </div>
-        {/* File tab - keep mounted to preserve editor state */}
-        <div className={cn('absolute inset-0', activeTab !== 'file' && 'invisible')}>
+        {/* File tab - use hidden instead of invisible for Monaco */}
+        <div className={cn('absolute inset-0', activeTab !== 'file' && 'hidden')}>
           <FilePanel rootPath={worktreePath} />
         </div>
-        {activeTab === 'source-control' && <SourceControlPlaceholder />}
+        {/* Source Control tab - use hidden instead of invisible for Monaco */}
+        <div className={cn('absolute inset-0', activeTab !== 'source-control' && 'hidden')}>
+          <SourceControlPanel
+            rootPath={worktreePath}
+            onExpandWorktree={onExpandWorktree}
+            worktreeCollapsed={worktreeCollapsed}
+          />
+        </div>
       </div>
     </main>
-  );
-}
-
-function SourceControlPlaceholder() {
-  return (
-    <Empty>
-      <EmptyMedia variant="icon">
-        <GitCommit className="h-4.5 w-4.5" />
-      </EmptyMedia>
-      <EmptyHeader>
-        <EmptyTitle>源代码管理</EmptyTitle>
-        <EmptyDescription>此功能即将推出，敬请期待</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
   );
 }

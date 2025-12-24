@@ -4,7 +4,9 @@ import type {
   AgentMetadata,
   CustomAgent,
   DetectedApp,
+  FileChange,
   FileChangeEvent,
+  FileDiff,
   FileEntry,
   GitBranch,
   GitLogEntry,
@@ -40,6 +42,16 @@ const electronAPI = {
     getDiff: (workdir: string, options?: { staged?: boolean }): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_DIFF, workdir, options),
     init: (workdir: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.GIT_INIT, workdir),
+    getFileChanges: (workdir: string): Promise<FileChange[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_FILE_CHANGES, workdir),
+    getFileDiff: (workdir: string, filePath: string, staged: boolean): Promise<FileDiff> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_FILE_DIFF, workdir, filePath, staged),
+    stage: (workdir: string, paths: string[]): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STAGE, workdir, paths),
+    unstage: (workdir: string, paths: string[]): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_UNSTAGE, workdir, paths),
+    discard: (workdir: string, filePath: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_DISCARD, workdir, filePath),
   },
 
   // Worktree

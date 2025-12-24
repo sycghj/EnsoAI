@@ -178,3 +178,22 @@
     box-shadow: none;
   }
 }
+
+/* Monaco Editor - Current diff highlight */
+.current-diff-highlight {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dark .current-diff-highlight {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+:root .current-diff-highlight {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.current-diff-gutter {
+  background-color: var(--accent) !important;
+  width: 3px !important;
+  margin-left: 3px;
+}

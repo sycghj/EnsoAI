@@ -10,6 +10,11 @@ export const IPC_CHANNELS = {
   GIT_LOG: 'git:log',
   GIT_DIFF: 'git:diff',
   GIT_INIT: 'git:init',
+  GIT_FILE_CHANGES: 'git:file-changes',
+  GIT_FILE_DIFF: 'git:file-diff',
+  GIT_STAGE: 'git:stage',
+  GIT_UNSTAGE: 'git:unstage',
+  GIT_DISCARD: 'git:discard',
 
   // Worktree
   WORKTREE_LIST: 'worktree:list',

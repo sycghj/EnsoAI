@@ -259,7 +259,13 @@ export function EditorArea({
             onChange={handleEditorChange}
             onMount={handleEditorMount}
             options={{
-              minimap: { enabled: false },
+              minimap: {
+                enabled: true,
+                side: 'right',
+                showSlider: 'mouseover',
+                renderCharacters: false,
+                maxColumn: 80,
+              },
               fontSize: 13,
               lineHeight: 20,
               padding: { top: 12, bottom: 12 },

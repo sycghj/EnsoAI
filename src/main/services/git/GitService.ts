@@ -1,11 +1,22 @@
-import type { GitBranch, GitLogEntry, GitStatus } from '@shared/types';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import type {
+  FileChange,
+  FileChangeStatus,
+  FileDiff,
+  GitBranch,
+  GitLogEntry,
+  GitStatus,
+} from '@shared/types';
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git';
 
 export class GitService {
   private git: SimpleGit;
+  private workdir: string;
 
   constructor(workdir: string) {
     this.git = simpleGit(workdir);
+    this.workdir = workdir;
   }
 
   async getStatus(): Promise<GitStatus> {
@@ -79,5 +90,104 @@ export class GitService {
 
   async init(): Promise<void> {
     await this.git.init();
+  }
+
+  async getFileChanges(): Promise<FileChange[]> {
+    const status: StatusResult = await this.git.status();
+    const changes: FileChange[] = [];
+
+    // Helper to determine status for staged files
+    const getStatus = (file: string, statusFiles: StatusResult): FileChangeStatus => {
+      if (statusFiles.created.includes(file)) return 'A';
+      if (statusFiles.deleted.includes(file)) return 'D';
+      if (statusFiles.renamed.some((r) => r.to === file)) return 'R';
+      if (statusFiles.conflicted.includes(file)) return 'X';
+      return 'M';
+    };
+
+    // Staged files
+    for (const file of status.staged) {
+      changes.push({
+        path: file,
+        status: getStatus(file, status),
+        staged: true,
+      });
+    }
+
+    // Unstaged modified files (exclude already staged)
+    for (const file of status.modified) {
+      if (!status.staged.includes(file)) {
+        changes.push({ path: file, status: 'M', staged: false });
+      }
+    }
+
+    // Unstaged deleted files
+    for (const file of status.deleted) {
+      if (!status.staged.includes(file)) {
+        changes.push({ path: file, status: 'D', staged: false });
+      }
+    }
+
+    // Untracked files
+    for (const file of status.not_added) {
+      changes.push({ path: file, status: 'U', staged: false });
+    }
+
+    // Conflicted files
+    for (const file of status.conflicted) {
+      if (!changes.some((c) => c.path === file)) {
+        changes.push({ path: file, status: 'X', staged: false });
+      }
+    }
+
+    return changes;
+  }
+
+  async getFileDiff(filePath: string, staged: boolean): Promise<FileDiff> {
+    const absolutePath = path.join(this.workdir, filePath);
+
+    let original = '';
+    let modified = '';
+
+    try {
+      // Get original content from HEAD (or index for staged)
+      if (staged) {
+        // For staged: compare HEAD vs index
+        original = await this.git.show([`HEAD:${filePath}`]).catch(() => '');
+        modified = await this.git.show([`:${filePath}`]).catch(() => '');
+      } else {
+        // For unstaged: compare index vs working tree
+        original = await this.git.show([`:${filePath}`]).catch(() => {
+          // If not in index, try HEAD
+          return this.git.show([`HEAD:${filePath}`]).catch(() => '');
+        });
+        modified = await fs.readFile(absolutePath, 'utf-8').catch(() => '');
+      }
+    } catch {
+      // File might be new or deleted
+    }
+
+    return { path: filePath, original, modified };
+  }
+
+  async stage(paths: string[]): Promise<void> {
+    await this.git.add(paths);
+  }
+
+  async unstage(paths: string[]): Promise<void> {
+    await this.git.raw(['reset', 'HEAD', '--', ...paths]);
+  }
+
+  async discard(filePath: string): Promise<void> {
+    // Check if file is untracked
+    const status = await this.git.status();
+    if (status.not_added.includes(filePath)) {
+      // Delete untracked file
+      const absolutePath = path.join(this.workdir, filePath);
+      await fs.unlink(absolutePath);
+    } else {
+      // Restore tracked file
+      await this.git.checkout(['--', filePath]);
+    }
   }
 }
