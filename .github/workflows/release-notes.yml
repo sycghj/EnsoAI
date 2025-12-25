@@ -88,7 +88,7 @@ jobs:
                - ci/build → 🔨 CI/CD
                - chore → 🧹 其他（跳过 release commit）
             3. 只保留有内容的分类
-            4. 使用 Write 工具将完整内容写入 /tmp/release-notes.md
+            4. 使用 Write 工具将完整内容写入 ${{ github.workspace }}/release-notes.md
 
             **输出格式**（直接写入文件，不要输出到终端）:
             ```markdown
@@ -120,10 +120,10 @@ jobs:
             **Full Changelog**: https://github.com/{REPO}/compare/{PREV_TAG}...{TAG}
             ```
 
-            请用实际值替换 {VERSION}、{TAG}、{REPO}、{PREV_TAG}，然后使用 Write 工具写入文件。
+            请用实际值替换 {VERSION}、{TAG}、{REPO}、{PREV_TAG}，然后使用 Write 工具写入 ${{ github.workspace }}/release-notes.md 文件。
 
       - name: Update Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release edit ${{ steps.tag.outputs.name }} --notes-file /tmp/release-notes.md
+          gh release edit ${{ steps.tag.outputs.name }} --notes-file ${{ github.workspace }}/release-notes.md
