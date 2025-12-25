@@ -1,5 +1,17 @@
 # CLAUDE.md
 
+## 设计规范
+
+UI 开发必须遵循 `docs/design-system.md`，核心要点：
+
+- **组件优先**：优先使用 [@coss/ui](https://coss.com/ui) 组件，禁止手动实现已有组件
+- **颜色**：使用 CSS 变量（`text-primary`、`bg-accent`、`text-muted-foreground`）
+- **尺寸**：Tab 栏 `h-9`、树节点 `h-7`、小按钮 `h-6`
+- **间距**：紧凑 `gap-1`、标准 `gap-2`、缩进 `depth * 12 + 8px`
+- **图标**：Lucide React，目录黄色、TS 蓝色、JS 黄色
+- **文本截断**：`min-w-0 flex-1 truncate` + 固定元素 `shrink-0`
+- **Monaco**：本地 worker、主题同步终端配色
+
 ## 提交信息规范
 
 本项目使用 [Conventional Commits](https://www.conventionalcommits.org/) 规范，Release Notes 会根据前缀自动分类。
