@@ -1,4 +1,5 @@
 import Editor, { loader, type OnMount } from '@monaco-editor/react';
+import { shikiToMonaco } from '@shikijs/monaco';
 import { FileCode, Sparkles } from 'lucide-react';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -8,6 +9,7 @@ import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
 import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import { useCallback, useEffect, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { createHighlighter } from 'shiki';
 import {
   Empty,
   EmptyDescription,
@@ -35,6 +37,41 @@ self.MonacoEnvironment = {
 
 // Tell @monaco-editor/react to use our pre-configured monaco instance
 loader.config({ monaco });
+
+// Languages to highlight with Shiki (not natively supported by Monaco)
+const SHIKI_LANGUAGES = ['vue', 'svelte', 'astro'];
+const SHIKI_THEMES = ['vitesse-dark', 'vitesse-light'];
+
+// Register Shiki languages with Monaco for syntax highlighting
+// Uses top-level await - supported in ES modules
+const shikiHighlighter = await createHighlighter({
+  themes: SHIKI_THEMES as ['vitesse-dark', 'vitesse-light'],
+  langs: SHIKI_LANGUAGES as ['vue', 'svelte', 'astro'],
+});
+
+// Register language IDs with Monaco (include extensions for auto-detection)
+for (const lang of SHIKI_LANGUAGES) {
+  monaco.languages.register({ id: lang, extensions: [`.${lang}`] });
+}
+
+// Save original setTheme before shikiToMonaco patches it
+const originalSetTheme = monaco.editor.setTheme.bind(monaco.editor);
+
+// Apply Shiki highlighting to Monaco (this patches setTheme)
+shikiToMonaco(shikiHighlighter, monaco);
+
+// Get Shiki's patched setTheme
+const shikiSetTheme = monaco.editor.setTheme.bind(monaco.editor);
+const shikiThemeSet = new Set<string>(SHIKI_THEMES);
+
+// Restore setTheme with fallback for non-Shiki themes
+monaco.editor.setTheme = (themeName: string) => {
+  if (shikiThemeSet.has(themeName)) {
+    shikiSetTheme(themeName);
+  } else {
+    originalSetTheme(themeName);
+  }
+};
 
 // Configure TypeScript compiler options to suppress module resolution errors
 // Monaco's TS service can't resolve project-specific paths like @/* aliases
@@ -90,6 +127,7 @@ function defineMonacoTheme(terminalThemeName: string) {
     base: isDark ? 'vs-dark' : 'vs',
     inherit: true,
     rules: [
+      // Basic tokens (Monaco native)
       { token: 'comment', foreground: xtermTheme.brightBlack.replace('#', '') },
       { token: 'keyword', foreground: xtermTheme.magenta.replace('#', '') },
       { token: 'string', foreground: xtermTheme.green.replace('#', '') },
@@ -98,6 +136,24 @@ function defineMonacoTheme(terminalThemeName: string) {
       { token: 'function', foreground: xtermTheme.blue.replace('#', '') },
       { token: 'variable', foreground: xtermTheme.red.replace('#', '') },
       { token: 'constant', foreground: xtermTheme.brightYellow.replace('#', '') },
+      // TextMate tokens (Shiki)
+      { token: 'keyword.control', foreground: xtermTheme.magenta.replace('#', '') },
+      { token: 'keyword.operator', foreground: xtermTheme.magenta.replace('#', '') },
+      { token: 'storage.type', foreground: xtermTheme.magenta.replace('#', '') },
+      { token: 'storage.modifier', foreground: xtermTheme.magenta.replace('#', '') },
+      { token: 'entity.name.function', foreground: xtermTheme.blue.replace('#', '') },
+      { token: 'entity.name.type', foreground: xtermTheme.cyan.replace('#', '') },
+      { token: 'entity.name.tag', foreground: xtermTheme.red.replace('#', '') },
+      { token: 'entity.other.attribute-name', foreground: xtermTheme.yellow.replace('#', '') },
+      { token: 'variable.other', foreground: xtermTheme.foreground.replace('#', '') },
+      { token: 'variable.parameter', foreground: xtermTheme.red.replace('#', '') },
+      { token: 'support.function', foreground: xtermTheme.blue.replace('#', '') },
+      { token: 'support.type', foreground: xtermTheme.cyan.replace('#', '') },
+      { token: 'constant.language', foreground: xtermTheme.brightYellow.replace('#', '') },
+      { token: 'constant.numeric', foreground: xtermTheme.yellow.replace('#', '') },
+      { token: 'punctuation', foreground: xtermTheme.foreground.replace('#', '') },
+      { token: 'punctuation.definition.tag', foreground: xtermTheme.brightBlack.replace('#', '') },
+      { token: 'meta.brace', foreground: xtermTheme.foreground.replace('#', '') },
     ],
     colors: {
       'editor.background': xtermTheme.background,
