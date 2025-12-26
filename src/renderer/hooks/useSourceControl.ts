@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toastManager } from '@/components/ui/toast';
 
 export function useFileChanges(workdir: string | null, isActive = true) {
   return useQuery({
@@ -44,6 +45,14 @@ export function useGitStage() {
         queryClient.invalidateQueries({ queryKey: ['git', 'file-diff', workdir] }),
       ]);
     },
+    onError: (error) => {
+      toastManager.add({
+        title: 'Stage failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error',
+        timeout: 5000,
+      });
+    },
   });
 }
 
@@ -60,6 +69,14 @@ export function useGitUnstage() {
         queryClient.invalidateQueries({ queryKey: ['git', 'status', workdir] }),
         queryClient.invalidateQueries({ queryKey: ['git', 'file-diff', workdir] }),
       ]);
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: 'Unstage failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error',
+        timeout: 5000,
+      });
     },
   });
 }
@@ -78,6 +95,14 @@ export function useGitDiscard() {
         queryClient.invalidateQueries({ queryKey: ['git', 'file-diff', workdir] }),
       ]);
     },
+    onError: (error) => {
+      toastManager.add({
+        title: 'Discard failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error',
+        timeout: 5000,
+      });
+    },
   });
 }
 
@@ -95,6 +120,14 @@ export function useGitCommit() {
         queryClient.invalidateQueries({ queryKey: ['git', 'log', workdir] }),
         queryClient.invalidateQueries({ queryKey: ['git', 'file-diff', workdir] }),
       ]);
+    },
+    onError: (error) => {
+      toastManager.add({
+        title: 'Commit failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error',
+        timeout: 5000,
+      });
     },
   });
 }
