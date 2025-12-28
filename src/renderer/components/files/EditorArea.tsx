@@ -1,5 +1,5 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
-import { FileCode, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, FileCode, Sparkles } from 'lucide-react';
 import type * as monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -77,6 +77,7 @@ export function EditorArea({
 
   // Markdown preview state
   const isMarkdown = isMarkdownFile(activeTabPath);
+  const [showPreview, setShowPreview] = useState(true);
   const [previewWidth, setPreviewWidth] = useState(50); // percentage
   const resizingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -581,13 +582,28 @@ export function EditorArea({
   return (
     <div className="flex h-full flex-col">
       {/* Tabs */}
-      <EditorTabs
-        tabs={tabs}
-        activeTabPath={activeTabPath}
-        onTabClick={handleTabClick}
-        onTabClose={handleTabClose}
-        onTabReorder={onTabReorder}
-      />
+      <div className="flex items-center">
+        <div className="min-w-0 flex-1">
+          <EditorTabs
+            tabs={tabs}
+            activeTabPath={activeTabPath}
+            onTabClick={handleTabClick}
+            onTabClose={handleTabClose}
+            onTabReorder={onTabReorder}
+          />
+        </div>
+        {/* Markdown Preview Toggle */}
+        {isMarkdown && (
+          <button
+            type="button"
+            onClick={() => setShowPreview(!showPreview)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center border-b text-muted-foreground hover:text-foreground transition-colors"
+            title={showPreview ? t('Hide preview') : t('Show preview')}
+          >
+            {showPreview ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
 
       {/* Breadcrumb */}
       {activeTab && breadcrumbSegments.length > 0 && (
@@ -624,7 +640,7 @@ export function EditorArea({
             {/* Editor Panel */}
             <div
               className="relative h-full overflow-hidden"
-              style={{ width: isMarkdown ? `${100 - previewWidth}%` : '100%' }}
+              style={{ width: isMarkdown && showPreview ? `${100 - previewWidth}%` : '100%' }}
             >
               <Editor
                 key={activeTab.path}
@@ -638,7 +654,7 @@ export function EditorArea({
                 options={{
                   // Display
                   minimap: {
-                    enabled: isMarkdown ? false : editorSettings.minimapEnabled,
+                    enabled: isMarkdown && showPreview ? false : editorSettings.minimapEnabled,
                     side: 'right',
                     showSlider: 'mouseover',
                     renderCharacters: false,
@@ -681,8 +697,8 @@ export function EditorArea({
               />
             </div>
 
-            {/* Resize Divider & Preview Panel (only for markdown) */}
-            {isMarkdown && (
+            {/* Resize Divider & Preview Panel (only for markdown with preview enabled) */}
+            {isMarkdown && showPreview && (
               <>
                 {/* Resize Divider */}
                 <div
