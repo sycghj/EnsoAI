@@ -377,3 +377,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release edit ${{ steps.tag.outputs.name }} --draft=false --notes-file release-notes.md --latest
+
+  update-package-managers:
+    name: Update Package Managers
+    needs: generate-release-notes
+    uses: ./.github/workflows/update-package-managers.yml
+    secrets: inherit
