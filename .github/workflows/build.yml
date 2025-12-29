@@ -382,4 +382,6 @@ jobs:
     name: Update Package Managers
     needs: generate-release-notes
     uses: ./.github/workflows/update-package-managers.yml
+    with:
+      tag: ${{ github.ref_name }}
     secrets: inherit
