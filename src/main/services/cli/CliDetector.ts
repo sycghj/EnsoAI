@@ -86,9 +86,9 @@ class CliDetector {
     const shellName = shell.toLowerCase();
 
     if (shellName.includes('wsl')) {
-      // WSL: wsl.exe -- sh -c "command"
+      // WSL: use bash login shell to load user's environment (nvm, etc.)
       const escapedCommand = command.replace(/"/g, '\\"');
-      fullCommand = `${shell} ${args.join(' ')} "${escapedCommand}"`;
+      fullCommand = `wsl.exe -- bash -ilc "${escapedCommand}"`;
     } else if (shellName.includes('cmd')) {
       // cmd.exe: don't quote the command, just pass it directly
       fullCommand = `"${shell}" ${args.join(' ')} ${command}`;
