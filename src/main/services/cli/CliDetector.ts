@@ -7,6 +7,22 @@ const isWindows = process.platform === 'win32';
 
 const execAsync = promisify(exec);
 
+// Detection timeout in milliseconds (increased for slow shells like PowerShell with -Login)
+const DETECT_TIMEOUT = 15000;
+const WSL_DETECT_TIMEOUT = 15000;
+
+/**
+ * Check if an error is a timeout error
+ */
+function isTimeoutError(error: unknown): boolean {
+  if (error && typeof error === 'object') {
+    const err = error as { killed?: boolean; signal?: string; code?: string };
+    // Node.js kills the process with SIGTERM on timeout
+    return err.killed === true || err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT';
+  }
+  return false;
+}
+
 interface BuiltinAgentConfig {
   id: BuiltinAgentId;
   name: string;
@@ -75,7 +91,7 @@ class CliDetector {
    * Execute command in login shell to load user's environment (PATH, nvm, etc.)
    * Uses user's configured shell from settings.
    */
-  private async execInLoginShell(command: string, timeout = 5000): Promise<string> {
+  private async execInLoginShell(command: string, timeout = DETECT_TIMEOUT): Promise<string> {
     const { shell, args } = getShellForCommand();
     const env = getEnvForCommand();
 
@@ -142,13 +158,14 @@ class CliDetector {
         isBuiltin: true,
         environment: 'native',
       };
-    } catch {
+    } catch (error) {
       return {
         id: config.id,
         name: config.name,
         command: config.command,
         installed: false,
         isBuiltin: true,
+        timedOut: isTimeoutError(error),
       };
     }
   }
@@ -158,12 +175,12 @@ class CliDetector {
       // Use interactive login shell (-il) to load nvm/rbenv/pyenv and other version managers
       // Use $SHELL to respect user's default shell (bash/zsh/etc)
       await execAsync(`wsl -- sh -c 'exec $SHELL -ilc "which ${config.command}"'`, {
-        timeout: 8000,
+        timeout: WSL_DETECT_TIMEOUT,
       });
       const { stdout } = await execAsync(
         `wsl -- sh -c 'exec $SHELL -ilc "${config.command} ${config.versionFlag}"'`,
         {
-          timeout: 8000,
+          timeout: WSL_DETECT_TIMEOUT,
         }
       );
 
@@ -182,7 +199,7 @@ class CliDetector {
         isBuiltin: true,
         environment: 'wsl',
       };
-    } catch {
+    } catch (error) {
       return {
         id: `${config.id}-wsl`,
         name: `${config.name} (WSL)`,
@@ -190,6 +207,7 @@ class CliDetector {
         installed: false,
         isBuiltin: true,
         environment: 'wsl',
+        timedOut: isTimeoutError(error),
       };
     }
   }
@@ -210,13 +228,14 @@ class CliDetector {
         isBuiltin: false,
         environment: 'native',
       };
-    } catch {
+    } catch (error) {
       return {
         id: agent.id,
         name: agent.name,
         command: agent.command,
         installed: false,
         isBuiltin: false,
+        timedOut: isTimeoutError(error),
       };
     }
   }
@@ -226,12 +245,12 @@ class CliDetector {
       // Use interactive login shell (-il) to load nvm/rbenv/pyenv and other version managers
       // Use $SHELL to respect user's default shell (bash/zsh/etc)
       await execAsync(`wsl -- sh -c 'exec $SHELL -ilc "which ${agent.command}"'`, {
-        timeout: 8000,
+        timeout: WSL_DETECT_TIMEOUT,
       });
       const { stdout } = await execAsync(
         `wsl -- sh -c 'exec $SHELL -ilc "${agent.command} --version"'`,
         {
-          timeout: 8000,
+          timeout: WSL_DETECT_TIMEOUT,
         }
       );
 
@@ -247,7 +266,7 @@ class CliDetector {
         isBuiltin: false,
         environment: 'wsl',
       };
-    } catch {
+    } catch (error) {
       return {
         id: `${agent.id}-wsl`,
         name: `${agent.name} (WSL)`,
@@ -255,6 +274,7 @@ class CliDetector {
         installed: false,
         isBuiltin: false,
         environment: 'wsl',
+        timedOut: isTimeoutError(error),
       };
     }
   }
@@ -341,8 +361,8 @@ class CliDetector {
   private async detectAllInShell(
     configs: Array<{ id: string; command: string; versionFlag: string; versionRegex?: RegExp }>,
     customAgents: CustomAgent[]
-  ): Promise<Map<string, { installed: boolean; version?: string }>> {
-    const results = new Map<string, { installed: boolean; version?: string }>();
+  ): Promise<Map<string, { installed: boolean; version?: string; timedOut?: boolean }>> {
+    const results = new Map<string, { installed: boolean; version?: string; timedOut?: boolean }>();
     const allCommands: Array<{ id: string; command: string; versionRegex?: RegExp }> = [];
 
     for (const config of configs) {
@@ -363,14 +383,14 @@ class CliDetector {
 
     const detectPromises = allCommands.map(async ({ id, command, versionRegex }) => {
       try {
-        const output = await this.execInLoginShell(command, 5000);
+        const output = await this.execInLoginShell(command);
         const versionMatch = versionRegex ? output.match(versionRegex) : null;
         results.set(id, {
           installed: true,
           version: versionMatch ? versionMatch[1] : undefined,
         });
-      } catch {
-        results.set(id, { installed: false });
+      } catch (error) {
+        results.set(id, { installed: false, timedOut: isTimeoutError(error) });
       }
     });
 
@@ -384,8 +404,8 @@ class CliDetector {
   private async detectAllInWsl(
     configs: Array<{ id: string; command: string; versionFlag: string; versionRegex?: RegExp }>,
     customAgents: CustomAgent[]
-  ): Promise<Map<string, { installed: boolean; version?: string }>> {
-    const results = new Map<string, { installed: boolean; version?: string }>();
+  ): Promise<Map<string, { installed: boolean; version?: string; timedOut?: boolean }>> {
+    const results = new Map<string, { installed: boolean; version?: string; timedOut?: boolean }>();
     const allCommands: Array<{ id: string; command: string; versionRegex?: RegExp }> = [];
 
     for (const config of configs) {
@@ -407,15 +427,15 @@ class CliDetector {
     const detectPromises = allCommands.map(async ({ id, command, versionRegex }) => {
       try {
         const { stdout } = await execAsync(`wsl -- sh -c 'exec $SHELL -ilc "${command}"'`, {
-          timeout: 8000,
+          timeout: WSL_DETECT_TIMEOUT,
         });
         const versionMatch = versionRegex ? stdout.match(versionRegex) : null;
         results.set(id, {
           installed: true,
           version: versionMatch ? versionMatch[1] : undefined,
         });
-      } catch {
-        results.set(id, { installed: false });
+      } catch (error) {
+        results.set(id, { installed: false, timedOut: isTimeoutError(error) });
       }
     });
 
@@ -448,6 +468,7 @@ class CliDetector {
         version: result?.version,
         isBuiltin: true,
         environment: 'native',
+        timedOut: result?.timedOut,
       });
     }
 
@@ -461,6 +482,7 @@ class CliDetector {
         version: result?.version,
         isBuiltin: false,
         environment: 'native',
+        timedOut: result?.timedOut,
       });
     }
 
@@ -478,6 +500,7 @@ class CliDetector {
           version: result?.version,
           isBuiltin: true,
           environment: 'wsl',
+          timedOut: result?.timedOut,
         });
       }
 
@@ -491,6 +514,7 @@ class CliDetector {
           version: result?.version,
           isBuiltin: false,
           environment: 'wsl',
+          timedOut: result?.timedOut,
         });
       }
     }

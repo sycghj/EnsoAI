@@ -354,8 +354,15 @@ export function AgentSettings() {
                     </span>
                   )}
                   {!isLoading && !isInstalled && (
-                    <span className="whitespace-nowrap rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-                      {t('Not installed')}
+                    <span
+                      className={cn(
+                        'whitespace-nowrap rounded px-1.5 py-0.5 text-xs',
+                        cli?.timedOut
+                          ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                          : 'bg-destructive/10 text-destructive'
+                      )}
+                    >
+                      {cli?.timedOut ? t('Timed out') : t('Not installed')}
                     </span>
                   )}
                 </div>
@@ -539,8 +546,15 @@ export function AgentSettings() {
                         <span className="text-xs text-muted-foreground">v{cli.version}</span>
                       )}
                       {!isLoading && !isInstalled && (
-                        <span className="whitespace-nowrap rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
-                          {t('Not installed')}
+                        <span
+                          className={cn(
+                            'whitespace-nowrap rounded px-1.5 py-0.5 text-xs',
+                            cli?.timedOut
+                              ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                              : 'bg-destructive/10 text-destructive'
+                          )}
+                        >
+                          {cli?.timedOut ? t('Timed out') : t('Not installed')}
                         </span>
                       )}
                     </div>

@@ -10,6 +10,8 @@ export interface AgentCliInfo {
   version?: string;
   isBuiltin: boolean;
   environment?: AgentEnvironment;
+  /** Detection timed out - status unknown */
+  timedOut?: boolean;
 }
 
 export interface CustomAgent {

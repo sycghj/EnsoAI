@@ -154,6 +154,7 @@ export const zhTranslations: Record<string, string> = {
   'No worktrees': '暂无 Worktree',
   'Not installed': '未安装',
   'Notification delay': '空闲时间',
+  'Timed out': '检测超时',
   'Notifications when agent is idle': 'Agent 空闲时发送系统通知',
   'Open in Finder': '在 Finder 中显示',
   'Open in IDE': '在 IDE 中打开',
