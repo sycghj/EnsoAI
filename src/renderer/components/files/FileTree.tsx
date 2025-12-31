@@ -9,8 +9,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import { Input } from '@/components/ui/input';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Menu, MenuItem, MenuPopup, MenuSeparator } from '@/components/ui/menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { FileTreeNode } from '@/hooks/useFileTree';
@@ -261,13 +260,21 @@ function FileTreeNodeComponent({
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
 
   // 获取压缩后的节点信息
-  const { displayName, actualNode, compactedPaths } = getCompactedNode(node, expandedPaths);
+  const { displayName, actualNode } = getCompactedNode(node, expandedPaths);
   const isExpanded = expandedPaths.has(actualNode.path);
   const isSelected = selectedPath === actualNode.path;
   const isEditing = editingPath === actualNode.path;
 
   const Icon = getFileIcon(actualNode.name, actualNode.isDirectory, isExpanded);
   const iconColor = getFileIconColor(actualNode.name, actualNode.isDirectory);
+
+  // 编辑时自动聚焦输入框
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
 
   const handleClick = useCallback(() => {
     // 总是更新选中状态
@@ -334,14 +341,13 @@ function FileTreeNodeComponent({
 
         {/* Name or input */}
         {isEditing ? (
-          <Input
+          <input
             ref={inputRef}
             value={editValue}
             onChange={(e) => onEditValueChange(e.target.value)}
             onBlur={() => onFinishRename(actualNode.path)}
             onKeyDown={handleKeyDown}
-            className="h-5 min-w-0 flex-1 px-1 py-0 text-sm"
-            autoFocus
+            className="h-5 min-w-0 flex-1 rounded border border-ring bg-background px-1 py-0 text-sm outline-none"
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
