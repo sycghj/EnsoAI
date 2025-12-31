@@ -1,5 +1,6 @@
 import { List, Plus, Terminal, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { normalizePath, pathsEqual } from '@/App/storage';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/i18n';
 import { matchesKeybinding } from '@/lib/keybinding';
@@ -31,7 +32,7 @@ function createInitialState(): TerminalState {
 }
 
 function getNextName(tabs: TerminalTab[], forCwd: string): string {
-  const cwdTabs = tabs.filter((t) => t.cwd === forCwd);
+  const cwdTabs = tabs.filter((t) => pathsEqual(t.cwd, forCwd));
   const numbers = cwdTabs
     .map((t) => {
       const match = t.name.match(/^Untitled-(\d+)$/);
@@ -55,8 +56,8 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
   const { setTerminalCount, registerTerminalCloseHandler } = useWorktreeActivityStore();
 
   // Get tabs for current worktree
-  const currentTabs = useMemo(() => tabs.filter((t) => t.cwd === cwd), [tabs, cwd]);
-  const activeId = cwd ? activeIds[cwd] || null : null;
+  const currentTabs = useMemo(() => tabs.filter((t) => cwd && pathsEqual(t.cwd, cwd)), [tabs, cwd]);
+  const activeId = cwd ? activeIds[normalizePath(cwd)] || null : null;
 
   // Stable terminal IDs - only append, never reorder (prevents DOM reordering issues with xterm)
   const [terminalIds, setTerminalIds] = useState<string[]>(() => tabs.map((t) => t.id));
@@ -78,7 +79,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
   useEffect(() => {
     // Always set current worktree count (even if 0)
     if (cwd) {
-      const count = tabs.filter((t) => t.cwd === cwd).length;
+      const count = tabs.filter((t) => pathsEqual(t.cwd, cwd)).length;
       setTerminalCount(cwd, count);
     }
   }, [tabs, cwd, setTerminalCount]);
@@ -88,12 +89,12 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
     const handleCloseAll = (worktreePath: string) => {
       setState((prev) => {
         // Close all tabs for this worktree
-        const tabsToClose = prev.tabs.filter((t) => t.cwd === worktreePath);
+        const tabsToClose = prev.tabs.filter((t) => pathsEqual(t.cwd, worktreePath));
         if (tabsToClose.length === 0) return prev;
 
-        const newTabs = prev.tabs.filter((t) => t.cwd !== worktreePath);
+        const newTabs = prev.tabs.filter((t) => !pathsEqual(t.cwd, worktreePath));
         const newActiveIds = { ...prev.activeIds };
-        delete newActiveIds[worktreePath];
+        delete newActiveIds[normalizePath(worktreePath)];
 
         // Explicitly set count to 0
         setTerminalCount(worktreePath, 0);
@@ -115,7 +116,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
       };
       return {
         tabs: [...prev.tabs, newTab],
-        activeIds: { ...prev.activeIds, [cwd]: newTab.id },
+        activeIds: { ...prev.activeIds, [normalizePath(cwd)]: newTab.id },
       };
     });
   }, [cwd]);
@@ -128,20 +129,21 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
         if (!closingTab) return prev;
 
         const tabCwd = closingTab.cwd;
+        const normalizedTabCwd = normalizePath(tabCwd);
         const newTabs = prev.tabs.filter((t) => t.id !== id);
-        const cwdTabs = newTabs.filter((t) => t.cwd === tabCwd);
+        const cwdTabs = newTabs.filter((t) => pathsEqual(t.cwd, tabCwd));
 
         const newActiveIds = { ...prev.activeIds };
 
         // If no more tabs for this worktree, clear active ID
         if (cwdTabs.length === 0) {
-          delete newActiveIds[tabCwd];
-        } else if (prev.activeIds[tabCwd] === id) {
+          delete newActiveIds[normalizedTabCwd];
+        } else if (prev.activeIds[normalizedTabCwd] === id) {
           // Switch to adjacent tab
-          const oldCwdTabs = prev.tabs.filter((t) => t.cwd === tabCwd);
+          const oldCwdTabs = prev.tabs.filter((t) => pathsEqual(t.cwd, tabCwd));
           const closedIndex = oldCwdTabs.findIndex((t) => t.id === id);
           const newIndex = Math.min(closedIndex, cwdTabs.length - 1);
-          newActiveIds[tabCwd] = cwdTabs[newIndex].id;
+          newActiveIds[normalizedTabCwd] = cwdTabs[newIndex].id;
         }
         return { tabs: newTabs, activeIds: newActiveIds };
       });
@@ -152,7 +154,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
   const handleSelectTab = useCallback(
     (id: string) => {
       if (!cwd) return;
-      setState((prev) => ({ ...prev, activeIds: { ...prev.activeIds, [cwd]: id } }));
+      setState((prev) => ({ ...prev, activeIds: { ...prev.activeIds, [normalizePath(cwd)]: id } }));
     },
     [cwd]
   );
@@ -167,23 +169,25 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
 
   const handleNextTab = useCallback(() => {
     if (!cwd) return;
+    const normalizedCwd = normalizePath(cwd);
     setState((prev) => {
-      const cwdTabs = prev.tabs.filter((t) => t.cwd === cwd);
+      const cwdTabs = prev.tabs.filter((t) => pathsEqual(t.cwd, cwd));
       if (cwdTabs.length <= 1) return prev;
-      const currentIndex = cwdTabs.findIndex((t) => t.id === prev.activeIds[cwd]);
+      const currentIndex = cwdTabs.findIndex((t) => t.id === prev.activeIds[normalizedCwd]);
       const nextIndex = (currentIndex + 1) % cwdTabs.length;
-      return { ...prev, activeIds: { ...prev.activeIds, [cwd]: cwdTabs[nextIndex].id } };
+      return { ...prev, activeIds: { ...prev.activeIds, [normalizedCwd]: cwdTabs[nextIndex].id } };
     });
   }, [cwd]);
 
   const handlePrevTab = useCallback(() => {
     if (!cwd) return;
+    const normalizedCwd = normalizePath(cwd);
     setState((prev) => {
-      const cwdTabs = prev.tabs.filter((t) => t.cwd === cwd);
+      const cwdTabs = prev.tabs.filter((t) => pathsEqual(t.cwd, cwd));
       if (cwdTabs.length <= 1) return prev;
-      const currentIndex = cwdTabs.findIndex((t) => t.id === prev.activeIds[cwd]);
+      const currentIndex = cwdTabs.findIndex((t) => t.id === prev.activeIds[normalizedCwd]);
       const prevIndex = currentIndex <= 0 ? cwdTabs.length - 1 : currentIndex - 1;
-      return { ...prev, activeIds: { ...prev.activeIds, [cwd]: cwdTabs[prevIndex].id } };
+      return { ...prev, activeIds: { ...prev.activeIds, [normalizedCwd]: cwdTabs[prevIndex].id } };
     });
   }, [cwd]);
 
@@ -445,7 +449,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
           const tab = tabs.find((t) => t.id === id);
           if (!tab) return null;
           // Only show terminal if panel is active, belongs to current worktree AND is the active tab
-          const isTerminalActive = isActive && tab.cwd === cwd && activeId === id;
+          const isTerminalActive = isActive && cwd && pathsEqual(tab.cwd, cwd) && activeId === id;
           return (
             <div
               key={id}
