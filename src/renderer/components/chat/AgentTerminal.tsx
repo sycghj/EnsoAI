@@ -21,6 +21,10 @@ interface AgentTerminalProps {
   onActivated?: () => void;
   onExit?: () => void;
   onTerminalTitleChange?: (title: string) => void;
+  onSplit?: () => void;
+  canMerge?: boolean;
+  onMerge?: () => void;
+  onFocus?: () => void;
 }
 
 const MIN_RUNTIME_FOR_AUTO_CLOSE = 10000; // 10 seconds
@@ -40,6 +44,10 @@ export function AgentTerminal({
   onActivated,
   onExit,
   onTerminalTitleChange,
+  onSplit,
+  canMerge,
+  onMerge,
+  onFocus,
 }: AgentTerminalProps) {
   const { t } = useI18n();
   const {
@@ -427,19 +435,31 @@ export function AgentTerminal({
   const handleContextMenu = useCallback(
     async (e: MouseEvent) => {
       e.preventDefault();
+      onFocus?.();
 
-      const selectedId = await window.electronAPI.contextMenu.show([
+      const menuItems = [
+        { id: 'split', label: t('Split Agent') },
+        ...(canMerge ? [{ id: 'merge', label: t('Merge Agent') }] : []),
+        { id: 'separator-0', label: '', type: 'separator' as const },
         { id: 'clear', label: t('Clear terminal') },
         { id: 'refresh', label: t('Refresh terminal') },
-        { id: 'separator-1', label: '', type: 'separator' },
+        { id: 'separator-1', label: '', type: 'separator' as const },
         { id: 'copy', label: t('Copy'), disabled: !terminal?.hasSelection() },
         { id: 'paste', label: t('Paste') },
         { id: 'selectAll', label: t('Select all') },
-      ]);
+      ];
+
+      const selectedId = await window.electronAPI.contextMenu.show(menuItems);
 
       if (!selectedId) return;
 
       switch (selectedId) {
+        case 'split':
+          onSplit?.();
+          break;
+        case 'merge':
+          onMerge?.();
+          break;
         case 'clear':
           clear();
           break;
@@ -462,7 +482,7 @@ export function AgentTerminal({
           break;
       }
     },
-    [terminal, clear, refreshRenderer, t]
+    [terminal, clear, refreshRenderer, t, onSplit, canMerge, onMerge, onFocus]
   );
 
   useEffect(() => {
@@ -473,11 +493,11 @@ export function AgentTerminal({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !isActive) return;
+    if (!container) return;
 
     container.addEventListener('contextmenu', handleContextMenu);
     return () => container.removeEventListener('contextmenu', handleContextMenu);
-  }, [isActive, handleContextMenu, containerRef]);
+  }, [handleContextMenu, containerRef]);
 
   // Cleanup idle timer on unmount
   useEffect(() => {
