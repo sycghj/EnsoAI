@@ -67,12 +67,14 @@ export const saveWorktreeOrderMap = (orderMap: Record<string, Record<string, num
   localStorage.setItem(STORAGE_KEYS.WORKTREE_ORDER, JSON.stringify(orderMap));
 };
 
-// Normalize path for comparison (handles Windows case-insensitivity and trailing slashes)
+// Normalize path for comparison (handles case-insensitivity and trailing slashes)
 export const normalizePath = (path: string): string => {
   // Remove trailing slashes/backslashes
   let normalized = path.replace(/[\\/]+$/, '');
-  // On Windows, normalize to lowercase for case-insensitive comparison
-  if (navigator.platform.startsWith('Win')) {
+  // On Windows and macOS, normalize to lowercase for case-insensitive comparison
+  // Linux is case-sensitive, so we don't lowercase there
+  const platform = navigator.platform;
+  if (platform.startsWith('Win') || platform.startsWith('Mac')) {
     normalized = normalized.toLowerCase();
   }
   return normalized;

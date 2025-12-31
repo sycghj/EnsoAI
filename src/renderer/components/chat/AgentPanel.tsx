@@ -1,5 +1,6 @@
 import { Plus, Sparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { normalizePath, pathsEqual } from '@/App/storage';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/i18n';
 import { matchesKeybinding } from '@/lib/keybinding';
@@ -112,7 +113,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
 
   // Get current worktree's active session id (fallback to first session if not set)
   const activeSessionId = useMemo(() => {
-    const activeId = activeIds[cwd];
+    const activeId = activeIds[normalizePath(cwd)];
     if (activeId) {
       // Verify the session exists and matches repoPath
       const session = allSessions.find((s) => s.id === activeId);
@@ -121,14 +122,14 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       }
     }
     // Fallback to first session for this repo+cwd
-    const firstSession = allSessions.find((s) => s.repoPath === repoPath && s.cwd === cwd);
+    const firstSession = allSessions.find((s) => s.repoPath === repoPath && pathsEqual(s.cwd, cwd));
     return firstSession?.id || null;
   }, [activeIds, allSessions, repoPath, cwd]);
 
   // Filter sessions for current repo+worktree (for SessionBar display, sorted by displayOrder)
   const currentWorktreeSessions = useMemo(() => {
     return allSessions
-      .filter((s) => s.repoPath === repoPath && s.cwd === cwd)
+      .filter((s) => s.repoPath === repoPath && pathsEqual(s.cwd, cwd))
       .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
   }, [allSessions, repoPath, cwd]);
 
@@ -227,13 +228,13 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
 
       // Check remaining sessions for this worktree
       const remainingInWorktree = allSessions.filter(
-        (s) => s.id !== id && s.repoPath === sessionRepoPath && s.cwd === worktreeCwd
+        (s) => s.id !== id && s.repoPath === sessionRepoPath && pathsEqual(s.cwd, worktreeCwd)
       );
 
       // If closing active session, switch to another if available
-      if (activeIds[worktreeCwd] === id && remainingInWorktree.length > 0) {
+      if (activeIds[normalizePath(worktreeCwd)] === id && remainingInWorktree.length > 0) {
         const closedIndex = allSessions
-          .filter((s) => s.repoPath === sessionRepoPath && s.cwd === worktreeCwd)
+          .filter((s) => s.repoPath === sessionRepoPath && pathsEqual(s.cwd, worktreeCwd))
           .findIndex((s) => s.id === id);
         const newActiveIndex = Math.min(closedIndex, remainingInWorktree.length - 1);
         setActiveId(worktreeCwd, remainingInWorktree[newActiveIndex].id);
@@ -255,7 +256,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
   useEffect(() => {
     const unsubscribe = window.electronAPI.notification.onClick((sessionId) => {
       const session = allSessions.find((s) => s.id === sessionId);
-      if (session && session.cwd !== cwd && onSwitchWorktree) {
+      if (session && !pathsEqual(session.cwd, cwd) && onSwitchWorktree) {
         onSwitchWorktree(session.cwd);
       }
       handleSelectSession(sessionId);
@@ -286,17 +287,17 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
   }, [pendingSessionId, cwd, repoPath, addSession, clearContinueRequest]);
 
   const handleNextSession = useCallback(() => {
-    const sessions = allSessions.filter((s) => s.repoPath === repoPath && s.cwd === cwd);
+    const sessions = allSessions.filter((s) => s.repoPath === repoPath && pathsEqual(s.cwd, cwd));
     if (sessions.length <= 1) return;
-    const currentIndex = sessions.findIndex((s) => s.id === activeIds[cwd]);
+    const currentIndex = sessions.findIndex((s) => s.id === activeIds[normalizePath(cwd)]);
     const nextIndex = (currentIndex + 1) % sessions.length;
     setActiveId(cwd, sessions[nextIndex].id);
   }, [allSessions, repoPath, cwd, activeIds, setActiveId]);
 
   const handlePrevSession = useCallback(() => {
-    const sessions = allSessions.filter((s) => s.repoPath === repoPath && s.cwd === cwd);
+    const sessions = allSessions.filter((s) => s.repoPath === repoPath && pathsEqual(s.cwd, cwd));
     if (sessions.length <= 1) return;
-    const currentIndex = sessions.findIndex((s) => s.id === activeIds[cwd]);
+    const currentIndex = sessions.findIndex((s) => s.id === activeIds[normalizePath(cwd)]);
     const prevIndex = currentIndex <= 0 ? sessions.length - 1 : currentIndex - 1;
     setActiveId(cwd, sessions[prevIndex].id);
   }, [allSessions, repoPath, cwd, activeIds, setActiveId]);
