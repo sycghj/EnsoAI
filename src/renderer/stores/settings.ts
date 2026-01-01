@@ -482,7 +482,9 @@ export const useSettingsStore = create<SettingsState>()(
       agentDetectionStatus: defaultAgentDetectionStatus,
       customAgents: [],
       shellConfig: {
-        shellType: window.electronAPI?.env.platform === 'win32' ? 'powershell7' : 'system',
+        // Use PowerShell 5.x as default on Windows (always available)
+        // PowerShell 7 (pwsh.exe) requires separate installation
+        shellType: window.electronAPI?.env.platform === 'win32' ? 'powershell' : 'system',
       },
       agentNotificationEnabled: true,
       agentNotificationDelay: 5, // 5 seconds

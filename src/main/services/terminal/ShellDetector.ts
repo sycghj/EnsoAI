@@ -233,6 +233,18 @@ class ShellDetector {
       if (path) {
         return { shell: path, args: def.args };
       }
+
+      // Shell not available, try fallback for PowerShell variants
+      if (isWindows && config.shellType === 'powershell7') {
+        // PowerShell 7 (pwsh.exe) not available, fallback to PowerShell 5.x (powershell.exe)
+        const fallbackDef = definitions.find((d) => d.id === 'powershell');
+        if (fallbackDef) {
+          const fallbackPath = this.findAvailablePath(fallbackDef.paths);
+          if (fallbackPath) {
+            return { shell: fallbackPath, args: fallbackDef.args };
+          }
+        }
+      }
     }
 
     return isWindows
@@ -267,6 +279,18 @@ class ShellDetector {
       const path = this.findAvailablePath(def.paths);
       if (path) {
         return { shell: path, execArgs: def.execArgs };
+      }
+
+      // Shell not available, try fallback for PowerShell variants
+      if (isWindows && config.shellType === 'powershell7') {
+        // PowerShell 7 (pwsh.exe) not available, fallback to PowerShell 5.x (powershell.exe)
+        const fallbackDef = definitions.find((d) => d.id === 'powershell');
+        if (fallbackDef) {
+          const fallbackPath = this.findAvailablePath(fallbackDef.paths);
+          if (fallbackPath) {
+            return { shell: fallbackPath, execArgs: fallbackDef.execArgs };
+          }
+        }
       }
     }
 
