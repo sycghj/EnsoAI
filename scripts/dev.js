@@ -11,9 +11,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
 // Start electron-vite in a new process group so we can kill the entire tree
-const child = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['electron-vite', 'dev'], {
+const child = spawn('npx', ['electron-vite', 'dev'], {
   cwd: root,
   stdio: 'inherit',
+  shell: process.platform === 'win32', // Use shell on Windows to avoid EINVAL errors
   detached: process.platform !== 'win32', // Create new process group on Unix
 });
 

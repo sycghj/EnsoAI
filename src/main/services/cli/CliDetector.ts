@@ -1,21 +1,26 @@
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 import type { AgentCliInfo, BuiltinAgentId, CustomAgent } from '@shared/types';
+import * as pty from 'node-pty';
 import { getEnvForCommand, getShellForCommand } from '../../utils/shell';
-
-const execAsync = promisify(exec);
 
 // Detection timeout in milliseconds (increased for slow shells like PowerShell with -Login)
 const DETECT_TIMEOUT = 15000;
+
+/**
+ * Strip ANSI escape codes from terminal output
+ */
+function stripAnsi(str: string): string {
+  // Remove ANSI color/style codes
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequence is intentional
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
 
 /**
  * Check if an error is a timeout error
  */
 function isTimeoutError(error: unknown): boolean {
   if (error && typeof error === 'object') {
-    const err = error as { killed?: boolean; signal?: string; code?: string };
-    // Node.js kills the process with SIGTERM on timeout
-    return err.killed === true || err.signal === 'SIGTERM' || err.code === 'ETIMEDOUT';
+    const err = error as { message?: string };
+    return err.message === 'Detection timeout';
   }
   return false;
 }
@@ -82,36 +87,87 @@ const BUILTIN_AGENT_CONFIGS: BuiltinAgentConfig[] = [
 
 class CliDetector {
   /**
-   * Execute command in login shell to load user's environment (PATH, nvm, etc.)
-   * Uses user's configured shell from settings.
+   * Execute command in PTY to load user's environment (PATH, nvm, mise, volta, etc.)
+   * Uses the same mechanism as terminal sessions to ensure consistent detection.
+   *
+   * This approach guarantees that if a CLI can be launched in a terminal session,
+   * it will also be detected correctly, as both use identical shell initialization.
    */
-  private async execInLoginShell(command: string, timeout = DETECT_TIMEOUT): Promise<string> {
-    const { shell, args } = getShellForCommand();
-    const env = getEnvForCommand();
+  private async execInPty(command: string, timeout = DETECT_TIMEOUT): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const { shell, args } = getShellForCommand();
+      const shellName = shell.toLowerCase();
 
-    let fullCommand: string;
-    const shellName = shell.toLowerCase();
+      // Construct shell args with command (same logic as AgentTerminal)
+      let shellArgs: string[];
 
-    if (shellName.includes('wsl')) {
-      // WSL: use user's default shell to load environment properly
-      // sh -lc starts login shell, exec $SHELL replaces with user's shell (zsh/bash/etc.)
-      const escapedCommand = command.replace(/"/g, '\\"');
-      fullCommand = `wsl.exe -- sh -lc 'exec "$SHELL" -ilc "${escapedCommand}"'`;
-    } else if (shellName.includes('cmd')) {
-      // cmd.exe: don't quote the command, just pass it directly
-      fullCommand = `"${shell}" ${args.join(' ')} ${command}`;
-    } else if (shellName.includes('powershell') || shellName.includes('pwsh')) {
-      // PowerShell: use -Command with the command string
-      const escapedCommand = command.replace(/"/g, '\\"');
-      fullCommand = `"${shell}" ${args.map((a) => `"${a}"`).join(' ')} "${escapedCommand}"`;
-    } else {
-      // Unix shells (bash, zsh, etc.): escape quotes and wrap in quotes
-      const escapedCommand = command.replace(/"/g, '\\"');
-      fullCommand = `"${shell}" ${args.map((a) => `"${a}"`).join(' ')} "${escapedCommand}"`;
-    }
+      if (shellName.includes('wsl')) {
+        // WSL: use user's default shell to load environment properly
+        const escapedCommand = command.replace(/"/g, '\\"');
+        shellArgs = ['-e', 'sh', '-lc', `exec "$SHELL" -ilc "${escapedCommand}"`];
+      } else if (shellName.includes('powershell') || shellName.includes('pwsh')) {
+        // PowerShell: wrap command in script block and exit with last exit code
+        shellArgs = [...args, `& { ${command}; exit $LASTEXITCODE }`];
+      } else if (shellName.includes('cmd')) {
+        // cmd.exe: execute command and exit
+        shellArgs = [...args, `${command} & exit %ERRORLEVEL%`];
+      } else {
+        // Unix shells (bash, zsh, etc.): execute and exit with command status
+        shellArgs = [...args, `${command}; exit $?`];
+      }
 
-    const { stdout } = await execAsync(fullCommand, { timeout, env });
-    return stdout;
+      let output = '';
+      let hasExited = false;
+      let ptyProcess: pty.IPty | null = null;
+
+      // Timeout handler
+      const timeoutId = setTimeout(() => {
+        if (!hasExited && ptyProcess) {
+          hasExited = true;
+          ptyProcess.kill();
+          reject(new Error('Detection timeout'));
+        }
+      }, timeout);
+
+      try {
+        // Spawn PTY with same environment as terminal sessions
+        ptyProcess = pty.spawn(shell, shellArgs, {
+          name: 'xterm-256color',
+          cols: 80,
+          rows: 24,
+          cwd: process.env.HOME || process.env.USERPROFILE || '/',
+          env: {
+            ...getEnvForCommand(),
+            TERM: 'xterm-256color',
+            COLORTERM: 'truecolor',
+          } as Record<string, string>,
+        });
+
+        // Collect output
+        ptyProcess.onData((data) => {
+          output += data;
+        });
+
+        // Handle exit
+        ptyProcess.onExit(({ exitCode }) => {
+          if (hasExited) return; // Already handled by timeout
+          hasExited = true;
+          clearTimeout(timeoutId);
+
+          if (exitCode === 0) {
+            // Clean ANSI codes and return output
+            const cleaned = stripAnsi(output).trim();
+            resolve(cleaned);
+          } else {
+            reject(new Error(`Command exited with code ${exitCode}`));
+          }
+        });
+      } catch (error) {
+        hasExited = true;
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    });
   }
 
   private async detectBuiltin(
@@ -121,7 +177,7 @@ class CliDetector {
     try {
       // Use customPath if provided, otherwise use default command
       const effectiveCommand = customPath || config.command;
-      const stdout = await this.execInLoginShell(`${effectiveCommand} ${config.versionFlag}`);
+      const stdout = await this.execInPty(`${effectiveCommand} ${config.versionFlag}`);
 
       let version: string | undefined;
       if (config.versionRegex) {
@@ -152,7 +208,7 @@ class CliDetector {
 
   private async detectCustom(agent: CustomAgent): Promise<AgentCliInfo> {
     try {
-      const stdout = await this.execInLoginShell(`${agent.command} --version`);
+      const stdout = await this.execInPty(`${agent.command} --version`);
 
       const match = stdout.match(/(\d+\.\d+\.\d+)/);
       const version = match ? match[1] : undefined;
