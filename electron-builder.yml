@@ -106,7 +106,6 @@ linux:
       arch: [x64]
   maintainer: EnsoAI Team <crolin-zhang@users.noreply.github.com>
   category: Development
-  icon: build/icon.png
   # Register enso:// URL scheme
   mimeTypes:
     - x-scheme-handler/enso
