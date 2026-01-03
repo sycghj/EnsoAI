@@ -1,4 +1,4 @@
-import type { McpServer, McpServerConfig, McpStdioServer } from '@shared/types';
+import type { McpServer, McpServerConfig } from '@shared/types';
 import { isHttpMcpConfig, isHttpMcpServer } from '@shared/types';
 import {
   ChevronDown,
@@ -47,7 +47,7 @@ export function McpSection() {
   const { t } = useI18n();
   const [expanded, setExpanded] = React.useState(false);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingServer, setEditingServer] = React.useState<McpStdioServer | null>(null);
+  const [editingServer, setEditingServer] = React.useState<McpServer | null>(null);
   const [initialized, setInitialized] = React.useState(false);
 
   const mcpServers = useSettingsStore((s) => s.mcpServers);
@@ -104,15 +104,6 @@ export function McpSection() {
   };
 
   const handleEdit = (server: McpServer) => {
-    // 只有 stdio 类型才能编辑
-    if (isHttpMcpServer(server)) {
-      toastManager.add({
-        type: 'info',
-        title: t('HTTP/SSE servers cannot be edited here'),
-        description: t('Use "claude mcp" command to manage HTTP/SSE servers'),
-      });
-      return;
-    }
     setEditingServer(server);
     setDialogOpen(true);
   };
@@ -128,7 +119,7 @@ export function McpSection() {
     toastManager.add({ type: 'success', title: t('MCP server removed') });
   };
 
-  const handleSave = async (server: McpStdioServer) => {
+  const handleSave = async (server: McpServer) => {
     if (editingServer) {
       updateMcpServer(server.id, server);
     } else {
@@ -205,11 +196,9 @@ export function McpSection() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 ml-2">
-                    {!isHttp && (
-                      <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(server)}>
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <Button variant="ghost" size="icon-xs" onClick={() => handleEdit(server)}>
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-xs"

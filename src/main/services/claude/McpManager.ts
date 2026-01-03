@@ -166,22 +166,15 @@ export function upsertMcpServer(server: McpServer): boolean {
   const existingConfig = data.mcpServers[server.id];
 
   if (server.enabled) {
-    // 检查是否已存在 HTTP/SSE 类型的配置
-    if (existingConfig && isHttpMcpConfig(existingConfig)) {
-      // HTTP/SSE 类型，保留原有配置不修改
-      // 因为这类配置需要通过 claude mcp 命令管理
+    // 转换 server 为配置
+    const config = serverToConfig(server);
+    if (config) {
+      data.mcpServers[server.id] = config;
+    } else if (existingConfig) {
+      // 转换失败但存在原配置，保留原配置
       data.mcpServers[server.id] = existingConfig;
-    } else {
-      // 转换 server 为配置（serverToConfig 已兼容旧数据）
-      const config = serverToConfig(server);
-      if (config) {
-        data.mcpServers[server.id] = config;
-      } else if (existingConfig) {
-        // 转换失败但存在原配置，保留原配置
-        data.mcpServers[server.id] = existingConfig;
-      }
-      // 如果转换失败且无原配置，不写入
     }
+    // 如果转换失败且无原配置，不写入
   } else {
     // 如果禁用了，从配置中移除
     delete data.mcpServers[server.id];

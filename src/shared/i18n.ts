@@ -760,6 +760,14 @@ export const zhTranslations: Record<string, string> = {
   'Add MCP Server': '添加 MCP 服务器',
   'Configure MCP server connection settings': '配置 MCP 服务器连接设置',
   'Space separated': '空格分隔',
+  Form: '表单',
+  Config: '配置',
+  'Invalid JSON or missing "command" field': '无效的 JSON 或缺少 "command" 字段',
+  'Invalid JSON config': '无效的 JSON 配置',
+  'Paste MCP config JSON with command, args, env fields':
+    '粘贴包含 command、args、env 字段的 MCP 配置 JSON',
+  'Paste MCP config JSON': '粘贴 MCP 配置 JSON',
+  Type: '类型',
   'HTTP/SSE servers cannot be edited here': 'HTTP/SSE 服务器无法在此编辑',
   'Use "claude mcp" command to manage HTTP/SSE servers':
     '使用 "claude mcp" 命令管理 HTTP/SSE 服务器',
