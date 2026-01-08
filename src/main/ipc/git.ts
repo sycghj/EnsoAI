@@ -100,9 +100,9 @@ export function registerGitHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.GIT_PUSH,
-    async (_, workdir: string, remote?: string, branch?: string) => {
+    async (_, workdir: string, remote?: string, branch?: string, setUpstream?: boolean) => {
       const git = getGitService(workdir);
-      await git.push(remote, branch);
+      await git.push(remote, branch, setUpstream);
     }
   );
 

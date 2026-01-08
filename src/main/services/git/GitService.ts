@@ -132,8 +132,12 @@ export class GitService {
     return result.commit;
   }
 
-  async push(remote = 'origin', branch?: string): Promise<void> {
-    await this.git.push(remote, branch);
+  async push(remote = 'origin', branch?: string, setUpstream = false): Promise<void> {
+    if (setUpstream && branch) {
+      await this.git.push(['-u', remote, branch]);
+    } else {
+      await this.git.push(remote, branch);
+    }
   }
 
   async pull(remote = 'origin', branch?: string): Promise<void> {

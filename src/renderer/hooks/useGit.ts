@@ -113,12 +113,14 @@ export function useGitPush() {
       workdir,
       remote,
       branch,
+      setUpstream,
     }: {
       workdir: string;
       remote?: string;
       branch?: string;
+      setUpstream?: boolean;
     }) => {
-      await window.electronAPI.git.push(workdir, remote, branch);
+      await window.electronAPI.git.push(workdir, remote, branch, setUpstream);
     },
     onSuccess: (_, { workdir }) => {
       queryClient.invalidateQueries({ queryKey: ['git', 'status', workdir] });

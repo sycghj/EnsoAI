@@ -3,6 +3,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  CloudUpload,
   GitBranch,
   GripVertical,
   History,
@@ -151,6 +152,35 @@ export function SourceControlPanel({
     refetchStatus,
     t,
   ]);
+
+  // Publish branch handler: push with --set-upstream
+  const handlePublish = useCallback(async () => {
+    if (!rootPath || !gitStatus?.current || pushMutation.isPending) return;
+
+    try {
+      await pushMutation.mutateAsync({
+        workdir: rootPath,
+        remote: 'origin',
+        branch: gitStatus.current,
+        setUpstream: true,
+      });
+      // Refetch all data after publish
+      refetch();
+      refetchCommits();
+      refetchStatus();
+
+      toastManager.add({
+        title: t('Branch published'),
+        description: t('Branch {{branch}} is now tracking origin/{{branch}}', {
+          branch: gitStatus.current,
+        }),
+        type: 'success',
+        timeout: 3000,
+      });
+    } catch {
+      // Errors are handled by mutation's onError
+    }
+  }, [rootPath, gitStatus?.current, pushMutation, refetch, refetchCommits, refetchStatus, t]);
 
   // Flatten infinite query data
   const commits = commitsData?.pages.flat() ?? [];
@@ -430,7 +460,30 @@ export function SourceControlPanel({
                     <span className="text-sm font-medium">{t('History')}</span>
                   </button>
 
-                  {/* Sync Button */}
+                  {/* Publish Branch Button - when no upstream */}
+                  {!gitStatus?.tracking && gitStatus?.current && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePublish();
+                      }}
+                      disabled={pushMutation.isPending}
+                      className="mr-2 flex h-6 items-center gap-1 rounded px-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+                      title={t('Publish branch to remote')}
+                    >
+                      {pushMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <>
+                          <CloudUpload className="h-3 w-3" />
+                          <span>{t('Publish')}</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Sync Button - when has upstream and ahead/behind */}
                   {gitStatus?.tracking && (gitStatus.ahead > 0 || gitStatus.behind > 0) && (
                     <button
                       type="button"

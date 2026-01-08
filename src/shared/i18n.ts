@@ -204,6 +204,11 @@ export const zhTranslations: Record<string, string> = {
   'Please select a workspace first.': '请先选择一个工作区',
   'Please select a worktree first': '请先选择一个 Worktree',
   Primary: '主',
+  Publish: '发布',
+  'Publish branch to remote': '发布分支到远程',
+  'Branch published': '分支已发布',
+  'Branch {{branch}} is now tracking origin/{{branch}}':
+    '分支 {{branch}} 现在跟踪 origin/{{branch}}',
   Refresh: '刷新',
   'Refresh enabled agents': '刷新已启用的 Agent',
   'Refresh terminal': '刷新终端',
