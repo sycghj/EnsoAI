@@ -537,7 +537,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
       theme: 'system',
-      layoutMode: 'columns',
+      layoutMode: 'tree',
       language: getDefaultLocale(),
       fontSize: 14,
       fontFamily: 'Inter',
