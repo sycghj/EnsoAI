@@ -11,6 +11,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { useI18n } from '@/i18n';
 import {
+  type DiffRenderer,
   type EditorAutoClosingBrackets,
   type EditorAutoClosingQuotes,
   type EditorAutoSave,
@@ -25,7 +26,7 @@ import {
 import { AUTO_SAVE_DELAY_DEFAULT } from './constants';
 
 export function EditorSettings() {
-  const { editorSettings, setEditorSettings } = useSettingsStore();
+  const { editorSettings, setEditorSettings, diffRenderer, setDiffRenderer } = useSettingsStore();
   const { t } = useI18n();
 
   // Local state for font inputs
@@ -154,6 +155,19 @@ export function EditorSettings() {
 
   const tabSizeOptions = [2, 4, 8];
 
+  const diffRendererOptions: { value: DiffRenderer; label: string; description: string }[] = [
+    {
+      value: 'monaco',
+      label: 'Monaco',
+      description: t('Monaco Editor (default, supports editing)'),
+    },
+    {
+      value: 'pierre',
+      label: 'Pierre Diffs',
+      description: t('Shiki-based (unified view, read-only)'),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Font Section */}
@@ -244,6 +258,28 @@ export function EditorSettings() {
       <div className="border-t pt-6">
         <h3 className="text-lg font-medium">{t('Display')}</h3>
         <p className="text-sm text-muted-foreground">{t('Editor display settings')}</p>
+      </div>
+
+      {/* Diff Renderer */}
+      <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+        <span className="text-sm font-medium">{t('Diff renderer')}</span>
+        <Select value={diffRenderer} onValueChange={(v) => setDiffRenderer(v as DiffRenderer)}>
+          <SelectTrigger className="w-48">
+            <SelectValue>
+              {diffRendererOptions.find((o) => o.value === diffRenderer)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup>
+            {diffRendererOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                <div className="flex flex-col">
+                  <span>{opt.label}</span>
+                  <span className="text-xs text-muted-foreground">{opt.description}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       </div>
 
       {/* Minimap */}
