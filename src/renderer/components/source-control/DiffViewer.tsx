@@ -19,7 +19,6 @@ import { cn } from '@/lib/utils';
 import { useNavigationStore } from '@/stores/navigation';
 import { useSettingsStore } from '@/stores/settings';
 import { useSourceControlStore } from '@/stores/sourceControl';
-import { DiffViewerPierre } from './DiffViewerPierre';
 
 type DiffEditorInstance = ReturnType<typeof monaco.editor.createDiffEditor>;
 
@@ -100,17 +99,7 @@ interface DiffViewerProps {
   isCommitView?: boolean; // Add flag to indicate commit history view
 }
 
-export function DiffViewer(props: DiffViewerProps) {
-  const { diffRenderer } = useSettingsStore();
-
-  if (diffRenderer === 'pierre') {
-    return <DiffViewerPierre {...props} />;
-  }
-
-  return <DiffViewerMonaco {...props} />;
-}
-
-function DiffViewerMonaco({
+export function DiffViewer({
   rootPath,
   file,
   onPrevFile,

@@ -117,8 +117,6 @@ export type FontWeight =
 
 export type TerminalRenderer = 'dom' | 'webgl';
 
-export type DiffRenderer = 'monaco' | 'pierre';
-
 export interface AgentConfig {
   enabled: boolean;
   isDefault: boolean;
@@ -445,7 +443,6 @@ interface SettingsState {
   sourceControlKeybindings: SourceControlKeybindings;
   searchKeybindings: SearchKeybindings;
   editorSettings: EditorSettings;
-  diffRenderer: DiffRenderer;
   agentSettings: AgentSettings;
   agentDetectionStatus: AgentDetectionStatus;
   customAgents: CustomAgent[];
@@ -482,7 +479,6 @@ interface SettingsState {
   setSourceControlKeybindings: (keybindings: SourceControlKeybindings) => void;
   setSearchKeybindings: (keybindings: SearchKeybindings) => void;
   setEditorSettings: (settings: Partial<EditorSettings>) => void;
-  setDiffRenderer: (renderer: DiffRenderer) => void;
   setAgentEnabled: (agentId: string, enabled: boolean) => void;
   setAgentDefault: (agentId: string) => void;
   setAgentCustomConfig: (
@@ -557,7 +553,6 @@ export const useSettingsStore = create<SettingsState>()(
       sourceControlKeybindings: defaultSourceControlKeybindings,
       searchKeybindings: defaultSearchKeybindings,
       editorSettings: defaultEditorSettings,
-      diffRenderer: 'monaco' as DiffRenderer,
       agentSettings: defaultAgentSettings,
       agentDetectionStatus: defaultAgentDetectionStatus,
       customAgents: [],
@@ -626,7 +621,6 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           editorSettings: { ...state.editorSettings, ...settings },
         })),
-      setDiffRenderer: (diffRenderer) => set({ diffRenderer }),
       setAgentEnabled: (agentId, enabled) => {
         const current = get().agentSettings;
         set({
