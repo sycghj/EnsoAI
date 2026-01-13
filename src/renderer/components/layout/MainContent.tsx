@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FileCode, FolderOpen, GitBranch, MessageSquare, Sparkles, Terminal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_TAB_ORDER, type TabId } from '@/App/constants';
+import { normalizePath } from '@/App/storage';
 import { OpenInMenu } from '@/components/app/OpenInMenu';
 import { AgentPanel } from '@/components/chat/AgentPanel';
 import { FilePanel } from '@/components/files';
@@ -65,7 +66,7 @@ export function MainContent({
   const activeIds = useAgentSessionsStore((s) => s.activeIds);
   const activeSessionId = useMemo(() => {
     if (!repoPath || !worktreePath) return null;
-    const key = `${repoPath}:${worktreePath}`;
+    const key = normalizePath(worktreePath);
     const activeId = activeIds[key];
     if (activeId) {
       const session = sessions.find((s) => s.id === activeId);
