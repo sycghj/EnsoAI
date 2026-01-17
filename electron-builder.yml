@@ -48,7 +48,6 @@ files:
 
 asar: true
 asarUnpack:
-  # ripgrep binary must be unpacked to be executable
   - "node_modules/@vscode/ripgrep/bin/**"
 compression: maximum
 

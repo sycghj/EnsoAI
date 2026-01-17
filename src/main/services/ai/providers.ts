@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import type {
   AIProvider,
   ClaudeModelId,
@@ -19,12 +20,35 @@ const claudeCodeProvider = createClaudeCode({
     settingSources: ['user', 'project', 'local'],
     disallowedTools: ['Write', 'Edit', 'Delete', 'Bash(rm:*)', 'Bash(sudo:*)'],
     includePartialMessages: true,
+    spawnClaudeCodeProcess: (options) => {
+      const proc = spawn('claude', options.args, {
+        cwd: options.cwd,
+        env: options.env as NodeJS.ProcessEnv,
+        signal: options.signal,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return {
+        stdin: proc.stdin,
+        stdout: proc.stdout,
+        get killed() {
+          return proc.killed;
+        },
+        get exitCode() {
+          return proc.exitCode;
+        },
+        kill: (signal) => proc.kill(signal),
+        on: (event, listener) => proc.on(event, listener),
+        once: (event, listener) => proc.once(event, listener),
+        off: (event, listener) => proc.off(event, listener),
+      };
+    },
   },
 });
 
 // Codex CLI provider with read-only sandbox
 const codexCliProvider = createCodexCli({
   defaultSettings: {
+    codexPath: 'codex',
     sandboxMode: 'read-only',
   },
 });

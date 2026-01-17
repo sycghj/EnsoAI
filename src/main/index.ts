@@ -5,6 +5,15 @@ import { electronApp, optimizer } from '@electron-toolkit/utils';
 import { type Locale, normalizeLocale } from '@shared/i18n';
 import { IPC_CHANNELS } from '@shared/types';
 import { app, BrowserWindow, ipcMain, Menu, net, protocol } from 'electron';
+import { shellEnvSync } from 'shell-env';
+
+// Fix environment for packaged app (macOS/Linux GUI apps don't inherit shell env)
+try {
+  Object.assign(process.env, shellEnvSync());
+} catch {
+  // Ignore errors - will use default env
+}
+
 import {
   autoStartHapi,
   cleanupAllResources,
@@ -169,8 +178,6 @@ async function initAutoUpdater(window: BrowserWindow): Promise<void> {
 }
 
 async function init(): Promise<void> {
-  // Enhance PATH for child processes (AI SDK, git commands, etc.)
-  // GUI apps don't inherit shell environment, so we need to add common paths
   process.env.PATH = getEnhancedPath();
 
   // Check Git installation
