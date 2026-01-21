@@ -212,7 +212,35 @@ export function ensureStopHook(): boolean {
       settings = JSON.parse(content);
     }
 
-    // Check if already configured
+    // TODO(v0.3.0): Remove legacy .js cleanup from settings.json
+    // Clean up any legacy .js references (file may have been deleted in previous versions)
+    let needSave = false;
+    if (settings.hooks?.Stop) {
+      const originalLength = settings.hooks.Stop.length;
+      settings.hooks.Stop = settings.hooks.Stop.filter(
+        (hookGroup) =>
+          !hookGroup.hooks?.some(
+            (hook) => hook.type === 'command' && hook.command?.includes('ensoai-stop.js') // Only remove .js references
+          )
+      );
+      if (settings.hooks.Stop.length < originalLength) {
+        console.log('[ClaudeHookManager] Cleaned up legacy .js hook references from settings');
+        needSave = true;
+      }
+      // Clean up empty Stop array
+      if (settings.hooks.Stop.length === 0) {
+        delete settings.hooks.Stop;
+      }
+    }
+
+    // Save if we cleaned up legacy references
+    if (needSave) {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), {
+        mode: 0o600,
+      });
+    }
+
+    // Check if already configured (with current .cjs version)
     if (isHookConfigured(settings)) {
       return true;
     }
@@ -500,6 +528,25 @@ export function ensureStatusLineHook(): boolean {
     if (fs.existsSync(settingsPath)) {
       const content = fs.readFileSync(settingsPath, 'utf-8');
       settings = JSON.parse(content);
+    }
+
+    // TODO(v0.3.0): Remove legacy .js cleanup from settings.json
+    // Clean up legacy .js reference in statusLine (file may have been deleted in previous versions)
+    let needSave = false;
+    if (
+      settings.statusLine?.type === 'command' &&
+      settings.statusLine?.command?.includes('enso-statusline.js')
+    ) {
+      console.log('[ClaudeHookManager] Cleaned up legacy .js statusLine reference from settings');
+      delete settings.statusLine;
+      needSave = true;
+    }
+
+    // Save if we cleaned up legacy reference
+    if (needSave) {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), {
+        mode: 0o600,
+      });
     }
 
     // Already configured
