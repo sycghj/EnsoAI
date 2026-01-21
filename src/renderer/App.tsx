@@ -71,6 +71,7 @@ import {
 } from './hooks/useWorktree';
 import { useI18n } from './i18n';
 import { initCloneProgressListener } from './stores/cloneTasks';
+import { useCodeReviewContinueStore } from './stores/codeReviewContinue';
 import { useEditorStore } from './stores/editor';
 import { useInitScriptStore } from './stores/initScript';
 import { useNavigationStore } from './stores/navigation';
@@ -654,6 +655,18 @@ export default function App() {
   useEffect(() => {
     window.electronAPI.mcp.setStatusLineHookEnabled(claudeCodeIntegration.statusLineEnabled);
   }, [claudeCodeIntegration.statusLineEnabled]);
+
+  // Listen for code review continue conversation request
+  const shouldSwitchToChatTab = useCodeReviewContinueStore(
+    (s) => s.continueConversation.shouldSwitchToChatTab
+  );
+  const clearChatTabSwitch = useCodeReviewContinueStore((s) => s.clearChatTabSwitch);
+  useEffect(() => {
+    if (shouldSwitchToChatTab && activeWorktree) {
+      handleTabChange('chat');
+      clearChatTabSwitch();
+    }
+  }, [shouldSwitchToChatTab, activeWorktree, clearChatTabSwitch, handleTabChange]);
 
   // Sync activeWorktree with loaded worktrees data
   useEffect(() => {

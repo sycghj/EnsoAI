@@ -10,6 +10,7 @@ export interface CodeReviewOptions {
   reasoningEffort?: ReasoningEffort;
   language: string;
   reviewId: string;
+  sessionId?: string; // Support session preservation for "Continue Conversation"
   onChunk: (chunk: string) => void;
   onComplete: () => void;
   onError: (error: string) => void;
@@ -270,10 +271,6 @@ export async function startCodeReview(options: CodeReviewOptions): Promise<void>
 
   const prompt = buildPrompt(gitDiff, gitLog, language);
 
-  console.log(
-    `[code-review] Starting review with provider=${provider}, model=${model}, cwd=${workdir}`
-  );
-
   // Use stream-json for Claude and Gemini, json for Codex (doesn't support streaming well)
   const outputFormat = provider === 'codex-cli' ? 'json' : 'stream-json';
 
@@ -285,6 +282,8 @@ export async function startCodeReview(options: CodeReviewOptions): Promise<void>
     reasoningEffort,
     outputFormat,
     disallowedTools: ['"Bash(git:*)"', 'Edit'],
+    sessionId: options.sessionId, // Pass sessionId for session preservation
+    preserveSession: !!options.sessionId, // Preserve session if sessionId is provided
   });
 
   activeReviews.set(reviewId, { proc, kill });

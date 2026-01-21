@@ -1,4 +1,12 @@
-import { AlertCircle, CheckCircle, Copy, Loader2, Minimize2, XCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle,
+  Copy,
+  Loader2,
+  MessageSquare,
+  Minimize2,
+  XCircle,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import type { Components } from 'react-markdown';
 import Markdown from 'react-markdown';
@@ -118,8 +126,10 @@ export function CodeReviewModal({ open, onOpenChange, repoPath }: CodeReviewModa
   const codeReviewSettings = useSettingsStore((s) => s.codeReview);
 
   const reviewRepoPath = useCodeReviewContinueStore((s) => s.review.repoPath);
+  const sessionId = useCodeReviewContinueStore((s) => s.review.sessionId); // Get sessionId for continue conversation
   const minimize = useCodeReviewContinueStore((s) => s.minimize);
   const isMinimized = useCodeReviewContinueStore((s) => s.isMinimized);
+  const requestContinue = useCodeReviewContinueStore((s) => s.requestContinue);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
@@ -192,6 +202,13 @@ export function CodeReviewModal({ open, onOpenChange, repoPath }: CodeReviewModa
     reset();
     onOpenChange(false);
   }, [reset, onOpenChange]);
+
+  const handleContinueConversation = useCallback(() => {
+    if (sessionId) {
+      requestContinue(sessionId);
+      onOpenChange(false);
+    }
+  }, [sessionId, requestContinue, onOpenChange]);
 
   const StatusIcon = () => {
     switch (status) {
@@ -278,6 +295,12 @@ export function CodeReviewModal({ open, onOpenChange, repoPath }: CodeReviewModa
             <Button variant="outline" onClick={handleMinimize}>
               <Minimize2 className="h-4 w-4 mr-2" />
               {t('Minimize')}
+            </Button>
+          )}
+          {codeReviewSettings.provider === 'claude-code' && status === 'complete' && content && (
+            <Button variant="outline" onClick={handleContinueConversation}>
+              <MessageSquare className="h-4 w-4 mr-2" />
+              {t('Continue Conversation')}
             </Button>
           )}
           <DialogClose

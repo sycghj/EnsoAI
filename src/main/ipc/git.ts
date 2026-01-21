@@ -234,8 +234,9 @@ export function registerGitHandlers(): void {
         reasoningEffort?: string;
         language?: string;
         reviewId: string;
+        sessionId?: string; // Support sessionId for "Continue Conversation"
       }
-    ): Promise<{ success: boolean; error?: string }> => {
+    ): Promise<{ success: boolean; error?: string; sessionId?: string }> => {
       const resolved = validateWorkdir(workdir);
       const sender = event.sender;
 
@@ -246,6 +247,7 @@ export function registerGitHandlers(): void {
         reasoningEffort: options.reasoningEffort as ReasoningEffort | undefined,
         language: options.language ?? '中文',
         reviewId: options.reviewId,
+        sessionId: options.sessionId, // Pass sessionId for session preservation
         onChunk: (chunk) => {
           if (!sender.isDestroyed()) {
             sender.send(IPC_CHANNELS.GIT_CODE_REVIEW_DATA, {
@@ -275,7 +277,7 @@ export function registerGitHandlers(): void {
         },
       });
 
-      return { success: true };
+      return { success: true, sessionId: options.sessionId };
     }
   );
 

@@ -10,7 +10,8 @@ const STORAGE_KEY = 'enso-session-bar';
 const EDGE_THRESHOLD = 20; // pixels from edge
 
 export interface Session {
-  id: string; // UUID, also used for agent --session-id
+  id: string; // Session's own unique ID
+  sessionId?: string; // Optional Claude session ID for --session-id/--resume (defaults to id if not set)
   name: string;
   agentId: string; // which agent CLI to use (e.g., 'claude', 'codex', 'gemini', 'claude-hapi', 'claude-happy')
   agentCommand: string; // the CLI command to run (e.g., 'claude', 'codex')

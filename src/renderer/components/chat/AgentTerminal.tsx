@@ -12,8 +12,9 @@ import { useSettingsStore } from '@/stores/settings';
 import { useTerminalWriteStore } from '@/stores/terminalWrite';
 
 interface AgentTerminalProps {
+  id?: string; // Terminal session ID (UI key)
   cwd?: string;
-  sessionId?: string;
+  sessionId?: string; // Claude session ID for --session-id/--resume (falls back to id)
   agentCommand?: string;
   customPath?: string; // custom absolute path to the agent CLI
   customArgs?: string; // additional arguments to pass to the agent
@@ -39,6 +40,7 @@ const IDLE_CONFIRMATION_COUNT = 2; // Require 2 consecutive idle polls (2 second
 const RECENT_OUTPUT_TIMEOUT_MS = 3000; // If output received within this time, consider still active
 
 export function AgentTerminal({
+  id,
   cwd,
   sessionId,
   agentCommand = 'claude',
@@ -114,6 +116,9 @@ export function AgentTerminal({
   const markSessionActive = useAgentSessionsStore((s) => s.markSessionActive);
   const clearRuntimeState = useAgentSessionsStore((s) => s.clearRuntimeState);
 
+  const terminalSessionId = id ?? sessionId;
+  const resumeSessionId = sessionId ?? id;
+
   // Keep isActiveRef in sync with isActive prop
   useEffect(() => {
     isActiveRef.current = isActive;
@@ -122,21 +127,21 @@ export function AgentTerminal({
   // Helper to update output state (with ref tracking to avoid unnecessary store updates)
   const updateOutputState = useCallback(
     (newState: OutputState) => {
-      if (!sessionId) return;
+      if (!terminalSessionId) return;
       if (outputStateRef.current === newState) return;
       outputStateRef.current = newState;
       // Use isActiveRef.current to get latest value (important for interval callbacks)
-      setOutputState(sessionId, newState, isActiveRef.current);
+      setOutputState(terminalSessionId, newState, isActiveRef.current);
     },
-    [sessionId, setOutputState]
+    [terminalSessionId, setOutputState]
   );
 
   // Mark session as active when user is viewing it
   useEffect(() => {
-    if (isActive && sessionId) {
-      markSessionActive(sessionId);
+    if (isActive && terminalSessionId) {
+      markSessionActive(terminalSessionId);
     }
-  }, [isActive, sessionId, markSessionActive]);
+  }, [isActive, terminalSessionId, markSessionActive]);
 
   // Start polling for process activity
   const startActivityPolling = useCallback(() => {
@@ -199,12 +204,12 @@ export function AgentTerminal({
   // Cleanup runtime state on unmount
   useEffect(() => {
     return () => {
-      if (sessionId) {
-        clearRuntimeState(sessionId);
+      if (terminalSessionId) {
+        clearRuntimeState(terminalSessionId);
       }
       stopActivityPolling();
     };
-  }, [sessionId, clearRuntimeState, stopActivityPolling]);
+  }, [terminalSessionId, clearRuntimeState, stopActivityPolling]);
 
   // Build command with session args
   const { command, env } = useMemo(() => {
@@ -218,12 +223,14 @@ export function AgentTerminal({
 
     const supportsSession = agentCommand?.startsWith('claude') ?? false;
     const supportIde = agentCommand?.startsWith('claude') ?? false;
+    const effectiveSessionId = resumeSessionId;
     const agentArgs =
-      supportsSession && sessionId
+      supportsSession && effectiveSessionId
         ? initialized
-          ? ['--resume', sessionId]
-          : ['--session-id', sessionId]
+          ? ['--resume', effectiveSessionId]
+          : ['--session-id', effectiveSessionId]
         : [];
+
     if (supportIde) {
       agentArgs.push('--ide');
     }
@@ -319,7 +326,7 @@ export function AgentTerminal({
     agentCommand,
     customPath,
     customArgs,
-    sessionId,
+    resumeSessionId,
     initialized,
     environment,
     hapiSettings.cliApiToken,
@@ -406,10 +413,11 @@ export function AgentTerminal({
           // Use terminal title as body, fall back to project name.
           const projectName = cwd?.split('/').pop() || 'Unknown';
           const notificationBody = currentTitleRef.current || projectName;
+          if (!terminalSessionId) return;
           window.electronAPI.notification.show({
             title: t('{{command}} completed', { command: agentCommand }),
             body: notificationBody,
-            sessionId,
+            sessionId: terminalSessionId,
           });
         }
       }, agentNotificationDelay * 1000);
@@ -422,7 +430,7 @@ export function AgentTerminal({
       agentNotificationEnabled,
       agentNotificationDelay,
       claudeCodeIntegration.stopHookEnabled,
-      sessionId,
+      terminalSessionId,
       t,
       updateOutputState,
     ]
@@ -469,7 +477,7 @@ export function AgentTerminal({
         // Reset output counter.
         dataSinceEnterRef.current = 0;
 
-        if (sessionId && glowEffectEnabled) {
+        if (terminalSessionId && glowEffectEnabled) {
           isMonitoringOutputRef.current = true;
           outputSinceEnterRef.current = 0;
           ptyIdRef.current = ptyId;
@@ -521,7 +529,7 @@ export function AgentTerminal({
       onActivated,
       agentNotificationEnterDelay,
       startActivityPolling,
-      sessionId,
+      terminalSessionId,
       glowEffectEnabled,
     ]
   );
@@ -568,11 +576,11 @@ export function AgentTerminal({
   // Register write and focus functions to global store for external access
   const { register, unregister } = useTerminalWriteStore();
   useEffect(() => {
-    if (!sessionId || !write) return;
+    if (!terminalSessionId || !write) return;
 
-    register(sessionId, write, () => terminal?.focus());
-    return () => unregister(sessionId);
-  }, [sessionId, write, terminal, register, unregister]);
+    register(terminalSessionId, write, () => terminal?.focus());
+    return () => unregister(terminalSessionId);
+  }, [terminalSessionId, write, terminal, register, unregister]);
 
   // Handle Cmd+F / Ctrl+F
   const handleKeyDown = useCallback(

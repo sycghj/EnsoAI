@@ -121,8 +121,9 @@ const electronAPI = {
         reasoningEffort?: string;
         reviewId: string;
         language?: string;
+        sessionId?: string; // Restore this parameter for "Continue Conversation"
       }
-    ): Promise<{ success: boolean; error?: string }> =>
+    ): Promise<{ success: boolean; error?: string; sessionId?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_CODE_REVIEW_START, workdir, options),
     stopCodeReview: (reviewId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_CODE_REVIEW_STOP, reviewId),

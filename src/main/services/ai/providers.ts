@@ -21,6 +21,8 @@ export interface CLISpawnOptions {
   outputFormat?: 'json' | 'stream-json';
   timeout?: number;
   disallowedTools?: string[];
+  sessionId?: string; // Support --session-id
+  preserveSession?: boolean; // Whether to preserve session
 }
 
 export interface CLISpawnResult {
@@ -33,10 +35,19 @@ function buildClaudeArgs(options: CLISpawnOptions): string[] {
     '-p',
     '--output-format',
     options.outputFormat ?? 'json',
-    '--no-session-persistence',
     '--model',
     options.model as ClaudeModelId,
   ];
+
+  // Support session ID for preserving conversation
+  if (options.sessionId) {
+    args.push('--session-id', options.sessionId);
+  }
+
+  // Only disable session persistence if not preserving
+  if (!options.preserveSession) {
+    args.push('--no-session-persistence');
+  }
 
   if (options.disallowedTools?.length) {
     args.push('--disallowedTools', options.disallowedTools.join(' '));
@@ -212,7 +223,10 @@ export function parseGeminiJsonOutput(stdout: string): ParsedCLIResult {
         try {
           const result = JSON.parse(trimmed);
           if (result.type === 'result' || result.content || result.text || result.response) {
-            return { success: true, text: result.result || result.content || result.text || result.response };
+            return {
+              success: true,
+              text: result.result || result.content || result.text || result.response,
+            };
           }
         } catch {}
       }
@@ -226,7 +240,10 @@ export function parseGeminiJsonOutput(stdout: string): ParsedCLIResult {
       jsonStr = jsonStr.slice(jsonStart, jsonEnd + 1);
       const result = JSON.parse(jsonStr);
       if (result.result || result.content || result.text || result.response) {
-        return { success: true, text: result.result || result.content || result.text || result.response };
+        return {
+          success: true,
+          text: result.result || result.content || result.text || result.response,
+        };
       }
     }
 

@@ -7,12 +7,21 @@ interface CodeReviewState {
   status: ReviewStatus;
   error: string | null;
   repoPath: string | null;
-  reviewId: string | null;
+  reviewId: string | null; // IPC flow control ID (timestamp format)
+  sessionId: string | null; // Claude session ID (UUID) for "Continue Conversation"
+}
+
+interface ContinueConversationState {
+  sessionId: string | null;
+  shouldSwitchToChatTab: boolean;
 }
 
 interface CodeReviewContinueState {
   isMinimized: boolean;
   review: CodeReviewState;
+
+  // Continue conversation state
+  continueConversation: ContinueConversationState;
 
   minimize: () => void;
   restore: () => void;
@@ -21,6 +30,12 @@ interface CodeReviewContinueState {
   appendContent: (text: string) => void;
   resetReview: () => void;
   setReviewId: (reviewId: string | null) => void;
+  setSessionId: (sessionId: string | null) => void;
+
+  // Continue conversation actions
+  requestContinue: (sessionId: string) => void;
+  clearContinueRequest: () => void;
+  clearChatTabSwitch: () => void;
 }
 
 const initialReviewState: CodeReviewState = {
@@ -29,11 +44,18 @@ const initialReviewState: CodeReviewState = {
   error: null,
   repoPath: null,
   reviewId: null,
+  sessionId: null,
+};
+
+const initialContinueConversationState: ContinueConversationState = {
+  sessionId: null,
+  shouldSwitchToChatTab: false,
 };
 
 export const useCodeReviewContinueStore = create<CodeReviewContinueState>((set) => ({
   isMinimized: false,
   review: { ...initialReviewState },
+  continueConversation: { ...initialContinueConversationState },
 
   minimize: () => set({ isMinimized: true }),
   restore: () => set({ isMinimized: false }),
@@ -58,6 +80,34 @@ export const useCodeReviewContinueStore = create<CodeReviewContinueState>((set) 
     set((state) => ({
       review: { ...state.review, reviewId },
     })),
+
+  setSessionId: (sessionId) =>
+    set((state) => ({
+      review: { ...state.review, sessionId },
+    })),
+
+  requestContinue: (sessionId) => {
+    set({
+      continueConversation: {
+        sessionId,
+        shouldSwitchToChatTab: true,
+      },
+    });
+  },
+  clearContinueRequest: () =>
+    set((state) => ({
+      continueConversation: {
+        ...state.continueConversation,
+        sessionId: null,
+      },
+    })),
+  clearChatTabSwitch: () =>
+    set((state) => ({
+      continueConversation: {
+        ...state.continueConversation,
+        shouldSwitchToChatTab: false,
+      },
+    })),
 }));
 
 let cleanupFn: (() => void) | null = null;
@@ -73,6 +123,10 @@ export async function startCodeReview(
 ): Promise<void> {
   const store = useCodeReviewContinueStore.getState();
 
+  // Clear previous review state when starting new review
+  store.setReviewId(null);
+  store.setSessionId(null);
+
   store.updateReview({
     content: '',
     status: 'initializing',
@@ -85,14 +139,20 @@ export async function startCodeReview(
     cleanupFn = null;
   }
 
+  // Generate reviewId for IPC flow control
   const reviewId = `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  store.setReviewId(reviewId);
+
+  // Generate UUID as sessionId for Claude session persistence
+  const sessionId = crypto.randomUUID();
+
+  // Store both IDs separately
+  store.setReviewId(reviewId); // For IPC event filtering
+  store.setSessionId(sessionId); // For "Continue Conversation"
 
   const onDataCleanup = window.electronAPI.git.onCodeReviewData((event) => {
     if (event.reviewId !== reviewId) return;
 
-    const currentReviewId = useCodeReviewContinueStore.getState().review.reviewId;
-    if (currentReviewId !== reviewId) return;
+    if (useCodeReviewContinueStore.getState().review.reviewId !== reviewId) return;
 
     if (event.type === 'data' && event.data) {
       store.updateReview({ status: 'streaming' });
@@ -102,7 +162,7 @@ export async function startCodeReview(
         status: 'error',
         error: event.data,
       });
-      store.setReviewId(null);
+      // Keep reviewId for potential retry or debugging
     } else if (event.type === 'exit') {
       const currentStatus = useCodeReviewContinueStore.getState().review.status;
       if (event.exitCode !== 0 && currentStatus !== 'complete') {
@@ -113,7 +173,8 @@ export async function startCodeReview(
       } else if (currentStatus !== 'error') {
         store.updateReview({ status: 'complete' });
       }
-      store.setReviewId(null);
+      // Keep reviewId for "Continue Conversation" feature
+      // It will be cleared when starting a new review or resetting
     }
   });
   cleanupFn = onDataCleanup;
@@ -125,6 +186,7 @@ export async function startCodeReview(
       reasoningEffort: settings.reasoningEffort,
       language: settings.language ?? '中文',
       reviewId,
+      sessionId, // Pass sessionId for Claude session persistence
     });
 
     if (!result.success) {

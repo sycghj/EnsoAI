@@ -14,6 +14,7 @@ import { useI18n } from '@/i18n';
 import { matchesKeybinding } from '@/lib/keybinding';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
 import { initAgentStatusListener } from '@/stores/agentStatus';
+import { useCodeReviewContinueStore } from '@/stores/codeReviewContinue';
 import { BUILTIN_AGENT_IDS, useSettingsStore } from '@/stores/settings';
 import { useWorktreeActivityStore } from '@/stores/worktreeActivity';
 import { AgentGroup } from './AgentGroup';
@@ -256,6 +257,70 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       setAgentCount(cwd, count);
     }
   }, [allSessions, cwd, setAgentCount]);
+
+  // Listen for code review continue conversation request
+  const pendingContinueSessionId = useCodeReviewContinueStore(
+    (s) => s.continueConversation.sessionId
+  );
+  const clearContinueRequest = useCodeReviewContinueStore((s) => s.clearContinueRequest);
+
+  useEffect(() => {
+    if (pendingContinueSessionId && cwd) {
+      const newSession: Session = {
+        id: crypto.randomUUID(), // Generate new session ID
+        sessionId: pendingContinueSessionId, // Use code review's sessionId for --resume
+        name: 'Code Review',
+        agentId: 'claude',
+        agentCommand: 'claude',
+        repoPath,
+        cwd,
+        initialized: true, // Mark as initialized to use --resume
+        environment: 'native',
+      };
+
+      addSession(newSession);
+
+      updateCurrentGroupState((state) => {
+        const groupId = state.activeGroupId || state.groups[0]?.id;
+        if (!groupId) {
+          const newGroup: AgentGroupType = {
+            id: crypto.randomUUID(),
+            sessionIds: [newSession.id],
+            activeSessionId: newSession.id,
+          };
+          return {
+            groups: [newGroup],
+            activeGroupId: newGroup.id,
+            flexPercents: [100],
+          };
+        }
+
+        return {
+          ...state,
+          groups: state.groups.map((g) =>
+            g.id === groupId
+              ? {
+                  ...g,
+                  sessionIds: [...g.sessionIds, newSession.id],
+                  activeSessionId: newSession.id,
+                }
+              : g
+          ),
+        };
+      });
+
+      setActiveId(cwd, newSession.id);
+      clearContinueRequest();
+    }
+  }, [
+    pendingContinueSessionId,
+    cwd,
+    repoPath,
+    addSession,
+    updateCurrentGroupState,
+    setActiveId,
+    clearContinueRequest,
+  ]);
 
   // Register close handler for external close requests
   useEffect(() => {
@@ -601,14 +666,6 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       });
     },
     [repoPath, cwd, customAgents, agentSettings, addSession, updateCurrentGroupState]
-  );
-
-  // Handle session terminal title change
-  const handleSessionTerminalTitleChange = useCallback(
-    (sessionId: string, title: string) => {
-      updateSession(sessionId, { terminalTitle: title });
-    },
-    [updateSession]
   );
 
   // Handle group click
@@ -1123,8 +1180,9 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
                 <div className="absolute inset-0 z-10 bg-background/10 pointer-events-none" />
               )}
               <AgentTerminal
+                id={session.id}
                 cwd={session.cwd}
-                sessionId={session.id}
+                sessionId={session.sessionId || session.id}
                 agentCommand={session.agentCommand || 'claude'}
                 customPath={session.customPath}
                 customArgs={session.customArgs}
