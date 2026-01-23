@@ -35,6 +35,8 @@ export interface UseXtermOptions {
     args: string[];
   };
   env?: Record<string, string>;
+  /** Attach to an already-created PTY session id (e.g. `pty-1`). */
+  existingPtyId?: string;
   isActive?: boolean;
   initialCommand?: string;
   onExit?: () => void;
@@ -104,6 +106,7 @@ export function useXterm({
   cwd,
   command,
   env,
+  existingPtyId,
   isActive = true,
   initialCommand,
   onExit,
@@ -259,7 +262,9 @@ export function useXterm({
   const initTerminal = useCallback(async () => {
     if (!containerRef.current || terminalRef.current) return;
 
-    setIsLoading(true);
+    const attachPtyId = existingPtyId?.trim();
+    const isAttachMode = Boolean(attachPtyId);
+    setIsLoading(!isAttachMode);
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -491,18 +496,7 @@ export function useXterm({
       return true;
     });
 
-    try {
-      const ptyId = await window.electronAPI.terminal.create({
-        cwd: cwd || window.electronAPI.env.HOME,
-        // If command is provided (e.g., for agent), use shell/args directly
-        // Otherwise, use shellConfig from settings
-        ...(command ? { shell: command.shell, args: command.args } : { shellConfig }),
-        cols: terminal.cols,
-        rows: terminal.rows,
-        env,
-        initialCommand: initialCommandRef.current,
-      });
-
+    const attachToPty = (ptyId: string) => {
       ptyIdRef.current = ptyId;
 
       // Handle data from pty with debounced buffering for smooth rendering
@@ -559,6 +553,30 @@ export function useXterm({
           window.electronAPI.terminal.write(ptyIdRef.current, data);
         }
       });
+    };
+
+    if (isAttachMode && attachPtyId) {
+      attachToPty(attachPtyId);
+      // Sync PTY size to current xterm size when attaching.
+      window.electronAPI.terminal.resize(attachPtyId, { cols: terminal.cols, rows: terminal.rows });
+      // Attached PTY may already be ready; avoid showing spinner indefinitely.
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const ptyId = await window.electronAPI.terminal.create({
+        cwd: cwd || window.electronAPI.env.HOME,
+        // If command is provided (e.g., for agent), use shell/args directly
+        // Otherwise, use shellConfig from settings
+        ...(command ? { shell: command.shell, args: command.args } : { shellConfig }),
+        cols: terminal.cols,
+        rows: terminal.rows,
+        env,
+        initialCommand: initialCommandRef.current,
+      });
+
+      attachToPty(ptyId);
 
       // Note: Don't focus here - wait for first data to avoid cursor on blank screen
       // Focus is handled by the isActive effect after isLoading becomes false
@@ -567,7 +585,7 @@ export function useXterm({
       terminal.writeln(`\x1b[31mFailed to start terminal.\x1b[0m`);
       terminal.writeln(`\x1b[33mError: ${error}\x1b[0m`);
     }
-  }, [cwd, command, shellConfig, commandKey, terminalRenderer]);
+  }, [cwd, command, shellConfig, commandKey, terminalRenderer, existingPtyId]);
 
   useEffect(() => {
     const shouldActivate = isActive || initialCommandRef.current;

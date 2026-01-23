@@ -58,6 +58,8 @@ export interface ExecInPtyOptions {
   timeout?: number;
   /** If true, force kill after timeout and return collected output instead of rejecting */
   killOnTimeout?: boolean;
+  /** Extra environment variables for the PTY process */
+  env?: Record<string, string>;
 }
 
 /**
@@ -69,7 +71,7 @@ export interface ExecInPtyOptions {
  * @returns The command output (cleaned of ANSI codes)
  */
 export async function execInPty(command: string, options: ExecInPtyOptions = {}): Promise<string> {
-  const { timeout = 15000, killOnTimeout = false } = options;
+  const { timeout = 15000, killOnTimeout = false, env: extraEnv } = options;
 
   return new Promise((resolve, reject) => {
     const { shell, args } = getShellForCommand();
@@ -115,7 +117,7 @@ export async function execInPty(command: string, options: ExecInPtyOptions = {})
         rows: 24,
         cwd: process.env.HOME || process.env.USERPROFILE || '/',
         env: {
-          ...getEnvForCommand(),
+          ...getEnvForCommand(extraEnv),
           TERM: 'xterm-256color',
           COLORTERM: 'truecolor',
         } as Record<string, string>,

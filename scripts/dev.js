@@ -4,11 +4,69 @@
  * electron-vite doesn't properly forward SIGINT to Electron subprocess.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
+
+function ensureElectronExecPath() {
+  if (process.env.ELECTRON_EXEC_PATH) return;
+
+  const require = createRequire(import.meta.url);
+
+  try {
+    const electronModuleEntry = require.resolve('electron');
+    const electronModulePath = dirname(electronModuleEntry);
+
+    // electron-vite expects ELECTRON_EXEC_PATH, otherwise it reads `path.txt` under `electron` package.
+    // Some environments end up with `path.txt` missing even though Electron is present.
+    const pathFile = join(electronModulePath, 'path.txt');
+    if (existsSync(pathFile)) {
+      const executablePath = readFileSync(pathFile, 'utf8').trim();
+      if (executablePath) {
+        const fullPath = join(electronModulePath, 'dist', executablePath);
+        if (existsSync(fullPath)) {
+          process.env.ELECTRON_EXEC_PATH = fullPath;
+          console.log(`[dev] ELECTRON_EXEC_PATH=${fullPath}`);
+          return;
+        }
+      }
+    }
+
+    // Fallback to common Electron dist paths.
+    const candidates = [];
+    if (process.platform === 'win32') {
+      candidates.push(join(electronModulePath, 'dist', 'electron.exe'));
+      candidates.push(join(electronModulePath, 'dist', 'Electron.exe'));
+    } else if (process.platform === 'darwin') {
+      candidates.push(join(electronModulePath, 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'));
+    } else {
+      candidates.push(join(electronModulePath, 'dist', 'electron'));
+    }
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        process.env.ELECTRON_EXEC_PATH = candidate;
+        console.log(`[dev] ELECTRON_EXEC_PATH=${candidate}`);
+        return;
+      }
+    }
+
+    // Last resort: some `electron` packages export the executable path string.
+    const maybeElectronPath = require('electron');
+    if (typeof maybeElectronPath === 'string' && existsSync(maybeElectronPath)) {
+      process.env.ELECTRON_EXEC_PATH = maybeElectronPath;
+      console.log(`[dev] ELECTRON_EXEC_PATH=${maybeElectronPath}`);
+    }
+  } catch {
+    // Ignore; electron-vite will surface a clearer error if Electron truly isn't installed.
+  }
+}
+
+ensureElectronExecPath();
 
 // Start electron-vite in a new process group so we can kill the entire tree
 // On Linux, --no-sandbox is needed when unprivileged user namespaces are disabled
@@ -19,6 +77,7 @@ if (process.platform === 'linux') {
 const child = spawn('npx', electronArgs, {
   cwd: root,
   stdio: 'inherit',
+  env: process.env,
   shell: process.platform === 'win32', // Use shell on Windows to avoid EINVAL errors
   detached: process.platform !== 'win32', // Create new process group on Unix
 });

@@ -6,7 +6,7 @@ import {
 import { BrowserWindow, ipcMain } from 'electron';
 import { PtyManager } from '../services/terminal/PtyManager';
 
-export const ptyManager = new PtyManager();
+export const ptyManager = PtyManager.getInstance();
 
 export function destroyAllTerminals(): void {
   ptyManager.destroyAll();

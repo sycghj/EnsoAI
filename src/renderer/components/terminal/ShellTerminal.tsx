@@ -12,6 +12,7 @@ interface ShellTerminalProps {
   isActive?: boolean;
   canMerge?: boolean;
   initialCommand?: string;
+  existingPtyId?: string;
   onExit?: () => void;
   onTitleChange?: (title: string) => void;
   onSplit?: () => void;
@@ -23,6 +24,7 @@ export function ShellTerminal({
   isActive = false,
   canMerge = false,
   initialCommand,
+  existingPtyId,
   onExit,
   onTitleChange,
   onSplit,
@@ -44,6 +46,7 @@ export function ShellTerminal({
     cwd,
     isActive,
     initialCommand,
+    existingPtyId,
     onExit,
     onTitleChange,
     onSplit,

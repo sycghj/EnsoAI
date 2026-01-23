@@ -24,6 +24,13 @@ import {
 } from './terminal';
 import { registerUpdaterHandlers } from './updater';
 import { clearAllWorktreeServices, registerWorktreeHandlers } from './worktree';
+import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
+
+let ccbRpcServer: EnsoRPCServer | null = null;
+
+export function setCcbRpcServer(server: EnsoRPCServer | null): void {
+  ccbRpcServer = server;
+}
 
 export function registerIpcHandlers(): void {
   registerGitHandlers();
@@ -52,6 +59,14 @@ export async function cleanupAllResources(): Promise<void> {
 
   // Stop all code review processes (sync, fast)
   stopAllCodeReviews();
+
+  // Stop accepting new CCB RPC requests before shutting down terminals.
+  try {
+    ccbRpcServer?.close();
+    ccbRpcServer = null;
+  } catch (err) {
+    console.warn('CCB RPC cleanup warning:', err);
+  }
 
   // Destroy all PTY sessions and wait for them to exit
   // This prevents crashes when PTY exit callbacks fire during Node cleanup
@@ -100,6 +115,14 @@ export function cleanupAllResourcesSync(): void {
 
   // Kill Hapi/Cloudflared processes (sync)
   cleanupHapi();
+
+  // Stop accepting new CCB RPC requests (sync best-effort)
+  try {
+    ccbRpcServer?.close();
+    ccbRpcServer = null;
+  } catch {
+    // Ignore
+  }
 
   // Kill all PTY sessions immediately (sync)
   destroyAllTerminals();

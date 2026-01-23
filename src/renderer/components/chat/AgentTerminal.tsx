@@ -218,6 +218,15 @@ export function AgentTerminal({
       return { command: undefined, env: undefined };
     }
 
+    // Environment hints for wrapper scripts (e.g. to avoid launching external terminals like wezterm).
+    // These env vars are intentionally generic and safe to ignore by CLIs.
+    const baseEnvVars: Record<string, string> = {
+      ENSOAI_INTEGRATED_TERMINAL: '1',
+    };
+    if (cwd) baseEnvVars.ENSOAI_PROJECT_DIR = cwd;
+    if (sessionId) baseEnvVars.ENSOAI_AGENT_SESSION_ID = sessionId;
+    if (agentCommand) baseEnvVars.ENSOAI_AGENT_COMMAND = agentCommand;
+
     // Use custom path if provided, otherwise use agentCommand
     const effectiveCommand = customPath || agentCommand;
 
@@ -266,7 +275,7 @@ export function AgentTerminal({
           shell: resolvedShell.shell,
           args: [...resolvedShell.execArgs, hapiCommand],
         },
-        env: envVars,
+        env: { ...baseEnvVars, ...(envVars ?? {}) },
       };
     }
 
@@ -281,7 +290,7 @@ export function AgentTerminal({
           shell: resolvedShell.shell,
           args: [...resolvedShell.execArgs, happyCommand],
         },
-        env: envVars,
+        env: { ...baseEnvVars, ...(envVars ?? {}) },
       };
     }
 
@@ -298,19 +307,26 @@ export function AgentTerminal({
           shell: 'wsl.exe',
           args: ['-e', 'sh', '-lc', `exec "$SHELL" -ilc "${escapedCommand}"`],
         },
-        env: envVars,
+        env: { ...baseEnvVars, ...(envVars ?? {}) },
       };
     }
 
     // PowerShell: wrap command in script block to preserve argument structure
     // Without this, PowerShell interprets args like --session-id as its own parameters
     if (shellName.includes('powershell') || shellName.includes('pwsh')) {
+      const escapedExe = effectiveCommand.replace(/"/g, '""');
+      // If the "command" itself contains whitespace and it's not a custom absolute path,
+      // treat it as an already-composed command string (e.g. `python -m ...`).
+      const shouldInvokeAsSingleCommand = Boolean(customPath) || !/\s/.test(effectiveCommand);
+      const psCommand = shouldInvokeAsSingleCommand
+        ? `& "${escapedExe}" ${agentArgs.join(' ')}`.trim()
+        : fullCommand;
       return {
         command: {
           shell: resolvedShell.shell,
-          args: [...resolvedShell.execArgs, `& { ${fullCommand} }`],
+          args: [...resolvedShell.execArgs, `& { ${psCommand} }`],
         },
-        env: envVars,
+        env: { ...baseEnvVars, ...(envVars ?? {}) },
       };
     }
 
@@ -320,7 +336,7 @@ export function AgentTerminal({
         shell: resolvedShell.shell,
         args: [...resolvedShell.execArgs, fullCommand],
       },
-      env: envVars,
+      env: { ...baseEnvVars, ...(envVars ?? {}) },
     };
   }, [
     agentCommand,
