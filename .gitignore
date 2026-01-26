@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+package-lock.json
 
 # Build output
 out/
@@ -30,3 +31,6 @@ coverage/
 thumbs.db
 dist*/
 build/cer.p12
+
+# Worktree
+PROMPT.md

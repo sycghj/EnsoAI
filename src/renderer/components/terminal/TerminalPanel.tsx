@@ -54,6 +54,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
   const [worktreeStates, setWorktreeStates] = useState<WorktreeGroupStates>({});
   // Global terminal IDs to keep terminals mounted across group moves
   const [globalTerminalIds, setGlobalTerminalIds] = useState<Set<string>>(new Set());
+  const cwdRef = useRef(cwd);
   const xtermKeybindings = useSettingsStore((state) => state.xtermKeybindings);
   const autoCreateSessionOnActivate = useSettingsStore(
     (state) => state.autoCreateSessionOnActivate
@@ -66,6 +67,10 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
   const syncTerminalSessions = useTerminalStore((s) => s.syncSessions);
   const { pendingScript, clearPendingScript } = useInitScriptStore();
   const pendingScriptProcessedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    cwdRef.current = cwd;
+  }, [cwd]);
 
   // Get current worktree's state
   const currentState = useMemo(() => {
@@ -161,6 +166,86 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
     },
     [cwd]
   );
+
+  // Listen for CCB-created terminal panes and open them as tabs (attach mode).
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.ccb.onTerminalOpen(({ ptyId, cwd: paneCwd, title }) => {
+      const currentCwd = cwdRef.current;
+      const targetWorktreeKey = currentCwd ? normalizePath(currentCwd) : normalizePath(paneCwd);
+
+      setWorktreeStates((prev) => {
+        const existing = prev[targetWorktreeKey] || createInitialGroupState();
+
+        // If tab already exists, just activate it.
+        for (const g of existing.groups) {
+          const found = g.tabs.find((t) => t.id === ptyId);
+          if (found) {
+            return {
+              ...prev,
+              [targetWorktreeKey]: {
+                ...existing,
+                groups: existing.groups.map((group) =>
+                  group.id === g.id
+                    ? {
+                        ...group,
+                        tabs: group.tabs.map((t) =>
+                          t.id === ptyId ? { ...t, title: title ?? t.title } : t
+                        ),
+                        activeTabId: ptyId,
+                      }
+                    : group
+                ),
+                activeGroupId: g.id,
+              },
+            };
+          }
+        }
+
+        const allTabs = existing.groups.flatMap((g) => g.tabs);
+        const newTab: TerminalTab = {
+          id: ptyId,
+          name: title || getNextTabName(allTabs, paneCwd),
+          title,
+          cwd: paneCwd,
+          existingPtyId: ptyId,
+        };
+
+        if (existing.groups.length === 0) {
+          const newGroup: TerminalGroupType = {
+            id: crypto.randomUUID(),
+            tabs: [newTab],
+            activeTabId: newTab.id,
+          };
+          return {
+            ...prev,
+            [targetWorktreeKey]: {
+              groups: [newGroup],
+              activeGroupId: newGroup.id,
+              flexPercents: [100],
+            },
+          };
+        }
+
+        const targetGroupId = existing.activeGroupId || existing.groups[0].id;
+        return {
+          ...prev,
+          [targetWorktreeKey]: {
+            ...existing,
+            groups: existing.groups.map((g) =>
+              g.id === targetGroupId
+                ? { ...g, tabs: [...g.tabs, newTab], activeTabId: newTab.id }
+                : g
+            ),
+            activeGroupId: targetGroupId,
+          },
+        };
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Handle tab changes within a group (searches all worktrees for the group)
   const handleTabsChange = useCallback(
@@ -909,6 +994,7 @@ export function TerminalPanel({ cwd, isActive = false }: TerminalPanelProps) {
                       isActive={isTerminalActive}
                       canMerge={state.groups.length > 1}
                       initialCommand={info.tab.initialCommand}
+                      existingPtyId={info.tab.existingPtyId}
                       onExit={() => handleTerminalClose(tabId)}
                       onTitleChange={(title) => handleTitleChange(tabId, title)}
                       onSplit={() => handleSplit(info.group.id)}

@@ -21,11 +21,13 @@ import {
   cleanupAllResources,
   cleanupAllResourcesSync,
   registerIpcHandlers,
+  setCcbRpcServer,
 } from './ipc';
 import { initClaudeProviderWatcher } from './ipc/claudeProvider';
 import { registerWindowHandlers } from './ipc/window';
 import { registerClaudeBridgeIpcHandlers } from './services/claude/ClaudeIdeBridge';
 import { unwatchClaudeSettings } from './services/claude/ClaudeProviderManager';
+import { EnsoRPCServer } from './services/ccb/EnsoRPCServer';
 import { isAllowedLocalFilePath } from './services/files/LocalFileAccess';
 import { checkGitInstalled } from './services/git/checkGit';
 import { setCurrentLocale } from './services/i18n';
@@ -35,6 +37,7 @@ import { createMainWindow } from './windows/MainWindow';
 let mainWindow: BrowserWindow | null = null;
 let pendingOpenPath: string | null = null;
 let cleanupWindowHandlers: (() => void) | null = null;
+let ccbRpcServer: EnsoRPCServer | null = null;
 
 // Register URL scheme handler (must be done before app is ready)
 if (process.defaultApp) {
@@ -237,6 +240,41 @@ app.whenReady().then(async () => {
   setCurrentLocale(readStoredLanguage());
 
   mainWindow = createMainWindow();
+
+  // CCB Enso Backend: start JSON-RPC server after window is ready/created.
+  // This allows CCB to inject commands into Enso-managed PTYs.
+  if (!ccbRpcServer) {
+    ccbRpcServer = new EnsoRPCServer(mainWindow);
+    setCcbRpcServer(ccbRpcServer);
+
+    ccbRpcServer.ready
+      .then(() => {
+        const { host, port, token } = ccbRpcServer?.getConnectionInfo() ?? {
+          host: '127.0.0.1',
+          port: 0,
+          token: '',
+        };
+
+        process.env.ENSO_RPC_HOST = host;
+        process.env.ENSO_RPC_PORT = String(port);
+        process.env.ENSO_RPC_TOKEN = token;
+
+        console.log(`[CCB][RPC] enabled at ${host}:${port}`);
+      })
+      .catch((error: unknown) => {
+        console.error('[CCB][RPC] failed to start:', error);
+        try {
+          ccbRpcServer?.close();
+        } catch {
+          // Ignore
+        }
+        ccbRpcServer = null;
+        setCcbRpcServer(null);
+      });
+  } else {
+    // Keep RPC server bound to the latest window (supports multiple windows).
+    ccbRpcServer.setMainWindow(mainWindow);
+  }
 
   // Register window control handlers (must be after mainWindow is created)
   cleanupWindowHandlers = registerWindowHandlers(mainWindow);

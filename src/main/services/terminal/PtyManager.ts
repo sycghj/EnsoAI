@@ -293,6 +293,15 @@ export function getEnhancedPath(): string {
 }
 
 export class PtyManager {
+  private static instance: PtyManager | null = null;
+
+  static getInstance(): PtyManager {
+    if (!PtyManager.instance) {
+      PtyManager.instance = new PtyManager();
+    }
+    return PtyManager.instance;
+  }
+
   private sessions = new Map<string, PtySession>();
   private counter = 0;
   // 活动检测缓存：{ ptyId: { lastCheckTs, lastValue, inFlightPromise } }
@@ -607,5 +616,13 @@ export class PtyManager {
     });
 
     return result;
+  }
+
+  has(id: string): boolean {
+    return this.sessions.has(id);
+  }
+
+  getPid(id: string): number | null {
+    return this.sessions.get(id)?.pty.pid ?? null;
   }
 }

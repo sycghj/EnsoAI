@@ -84,7 +84,10 @@ class CliDetector {
       const effectiveCommand = customPath || config.command;
       // Windows: use 60s timeout due to slower shell initialization (PowerShell, WSL)
       const timeout = isWindows ? 60000 : 15000;
-      const stdout = await execInPty(`${effectiveCommand} ${config.versionFlag}`, { timeout });
+      const stdout = await execInPty(`${effectiveCommand} ${config.versionFlag}`, {
+        timeout,
+        env: { ENSOAI_INTEGRATED_TERMINAL: '1' },
+      });
 
       let version: string | undefined;
       if (config.versionRegex) {
@@ -117,7 +120,10 @@ class CliDetector {
     try {
       // Windows: use 60s timeout due to slower shell initialization (PowerShell, WSL)
       const timeout = isWindows ? 60000 : 15000;
-      const stdout = await execInPty(`${agent.command} --version`, { timeout });
+      const stdout = await execInPty(`${agent.command} --version`, {
+        timeout,
+        env: { ENSOAI_INTEGRATED_TERMINAL: '1' },
+      });
 
       const match = stdout.match(/(\d+\.\d+\.\d+)/);
       const version = match ? match[1] : undefined;

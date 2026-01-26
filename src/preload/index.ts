@@ -286,6 +286,19 @@ const electronAPI = {
     },
   },
 
+  ccb: {
+    onTerminalOpen: (
+      callback: (event: { ptyId: string; cwd: string; title?: string }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        event: { ptyId: string; cwd: string; title?: string }
+      ) => callback(event);
+      ipcRenderer.on(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
+    },
+  },
+
   // Agent
   agent: {
     list: (): Promise<AgentMetadata[]> => ipcRenderer.invoke(IPC_CHANNELS.AGENT_LIST),

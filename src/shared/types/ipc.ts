@@ -74,6 +74,9 @@ export const IPC_CHANNELS = {
   TERMINAL_EXIT: 'terminal:exit',
   TERMINAL_GET_ACTIVITY: 'terminal:getActivity',
 
+  // CCB
+  CCB_TERMINAL_OPEN: 'ccb:terminal:open',
+
   // Agent
   AGENT_LIST: 'agent:list',
   AGENT_STOP_NOTIFICATION: 'agent:stop:notification',

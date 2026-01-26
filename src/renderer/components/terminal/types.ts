@@ -7,6 +7,8 @@ export interface TerminalTab {
   title?: string;
   userEdited?: boolean;
   initialCommand?: string;
+  /** Attach to an already-created PTY session id (e.g. from CCB). */
+  existingPtyId?: string;
 }
 
 export interface TerminalGroup {
