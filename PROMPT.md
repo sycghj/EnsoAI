@@ -1,17 +1,18 @@
 ---
-branch: feat/ccb-enso-integration
-base: feat/ccb-enso-backend
-depends_on: []
+branch: feat/ccb-multi-pane-ui
+base: feat/ccb-enso-integration
+depends_on:
+  - feat/ccb-enso-integration
 modules:
-  - src/main/index.ts
-  - src/main/ipc/ccb.ts
-  - src/main/services/ccb/
-priority: P0
-estimate_days: [0.5, 1]
+  - src/renderer/components/chat/
+  - src/renderer/stores/
+  - src/preload/
+priority: P1
+estimate_days: [1, 2]
 dod:
-  - "RPC Server 在主窗口创建时启动"
-  - "环境变量传递给 PTY 子进程"
-  - "IPC handlers 实现 Main ↔ Renderer 通信"
+  - "Renderer 支持多 AgentTerminal 同时显示"
+  - "IPC 监听 ccb:pane-created 事件并动态创建终端组件"
+  - "基本的分屏布局（网格或分栏）"
   - "构建成功 + Lint 通过"
 tests:
   commands:
@@ -19,99 +20,95 @@ tests:
     - npm run lint
 ---
 
-# Branch Prompt: feat/ccb-enso-integration
+# Branch Prompt: feat/ccb-multi-pane-ui
 
 ## Goal
 
-在 Enso 启动时初始化 CCB RPC Server，通过环境变量传递连接信息给 PTY 子进程，使 CCB 能够检测到 Enso 环境并建立 RPC 通信。
+在 Renderer 进程实现多 Pane 分屏 UI，使 Enso 能够同时显示多个 AI Agent 终端（Claude、Codex、Gemini、OpenCode）。
 
 ## Scope (In)
 
-- 在 `src/main/index.ts` 中创建和管理 `EnsoRPCServer` 实例
-- 通过环境变量传递 `ENSO_RPC_HOST`, `ENSO_RPC_PORT`, `ENSO_RPC_TOKEN` 给 PTY
-- 实现 `src/main/ipc/ccb.ts` 用于 Main ↔ Renderer IPC 通信
-- 在 `app.on('before-quit')` 时清理 RPC Server
+- 监听 `CCB_TERMINAL_OPEN` IPC 事件，动态创建 AgentTerminal 组件
+- 实现多 Pane 布局组件（支持 2-4 个终端同时显示）
+- Pane 标题显示 provider 名称
+- 基本的布局管理（网格布局）
 
 ## Non-Goals (Out)
 
-- 多 Pane UI 布局（由 `feat/ccb-multi-pane-ui` 负责）
-- CCB Python 端代码修改（已完成）
-- 端到端测试（由 `test/ccb-e2e-validation` 负责）
+- RPC Server 和 Main 进程逻辑（已在 `feat/ccb-enso-integration` 完成）
+- CCB Python 端代码
+- 拖拽调整 Pane 大小（未来增强）
+- 保存/恢复布局（未来增强）
 
 ## Modules Impacted
 
-- `src/main/index.ts` - 启动逻辑
-- `src/main/ipc/ccb.ts` - IPC handlers（新增）
-- `src/main/services/terminal/PtyManager.ts` - 环境变量注入
-- `src/main/services/ccb/EnsoRPCServer.ts` - RPC Server（已实现）
+- `src/renderer/components/chat/` - 终端组件
+- `src/renderer/stores/` - 状态管理
+- `src/preload/index.ts` - IPC 暴露
 
 ## Dependencies
 
-- Base branch: `feat/ccb-enso-backend`
-- Depends on: 无
+- Base branch: `feat/ccb-enso-integration`
+- Depends on: `feat/ccb-enso-integration` (RPC Server 和 IPC 通道)
 - Blocked by: 无
 
 ## Implementation Plan
 
-### 1. 修改 `src/main/index.ts`
+### 1. 理解现有 IPC 通道
 
-```typescript
-import { EnsoRPCServer } from './services/ccb/EnsoRPCServer';
-
-// 在创建主窗口后
-let rpcServer: EnsoRPCServer | null = null;
-
-async function createWindow() {
-  const mainWindow = new BrowserWindow({ ... });
-
-  // 初始化 RPC Server
-  rpcServer = new EnsoRPCServer(mainWindow);
-  await rpcServer.ready;
-
-  const { port, token, host } = rpcServer.getConnectionInfo();
-  console.log(`[CCB] RPC Server listening on ${host}:${port}`);
-
-  // 设置环境变量（供子进程继承）
-  process.env.ENSO_RPC_HOST = host;
-  process.env.ENSO_RPC_PORT = String(port);
-  process.env.ENSO_RPC_TOKEN = token;
-
-  return mainWindow;
-}
-
-// 清理
-app.on('before-quit', () => {
-  rpcServer?.close();
-});
+根据 `feat/ccb-enso-integration` 的报告：
+```
+CCBCore.createPane() → webContents.send(CCB_TERMINAL_OPEN) → Renderer UI
 ```
 
-### 2. 创建 `src/main/ipc/ccb.ts`
+检查 `src/preload/index.ts` 中暴露的 `api.ccb.onTerminalOpen()` 接口。
+
+### 2. 创建多 Pane 布局组件
 
 ```typescript
-import { ipcMain, BrowserWindow } from 'electron';
+// src/renderer/components/chat/MultiPaneLayout.tsx
+interface PaneInfo {
+  pane_id: string;
+  ptyId: string;
+  title: string;
+}
 
-export function registerCCBHandlers(mainWindow: BrowserWindow): void {
-  // 监听来自 CCBCore 的 pane 创建事件，转发给 Renderer
-  // 这些在 CCBCore 中通过 mainWindow.webContents.send() 处理
+export function MultiPaneLayout() {
+  const [panes, setPanes] = useState<PaneInfo[]>([]);
 
-  // 可选：提供查询接口
-  ipcMain.handle('ccb:get-connection-info', () => {
-    return {
-      host: process.env.ENSO_RPC_HOST,
-      port: process.env.ENSO_RPC_PORT,
-      // 注意：不暴露 token 给 Renderer
-    };
-  });
+  useEffect(() => {
+    // 监听 CCB 创建 pane 事件
+    window.api.ccb.onTerminalOpen((event, data) => {
+      setPanes(prev => [...prev, data]);
+    });
 
-  ipcMain.handle('ccb:list-panes', async (_, rpcServer) => {
-    // 可选：返回当前 pane 列表
-  });
+    window.api.ccb.onTerminalClose((event, data) => {
+      setPanes(prev => prev.filter(p => p.pane_id !== data.pane_id));
+    });
+  }, []);
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {panes.map(pane => (
+        <AgentTerminal key={pane.pane_id} pane={pane} />
+      ))}
+    </div>
+  );
 }
 ```
 
-### 3. 修改 `PtyManager.ts` 确保环境变量传递
+### 3. 布局策略
 
-检查 PTY 创建时是否继承 `process.env`，确保 CCB 子进程能读取 RPC 连接信息。
+| Pane 数量 | 布局 |
+|-----------|------|
+| 1 | 全屏 |
+| 2 | 左右分栏 (1:1) |
+| 3 | 左 1 + 右上下 2 |
+| 4 | 2×2 网格 |
+
+### 4. 集成到现有 UI
+
+确定多 Pane 布局在 Enso UI 中的位置和触发条件。
 
 ## Test Plan
 
@@ -122,20 +119,21 @@ export function registerCCBHandlers(mainWindow: BrowserWindow): void {
 
 ### Manual
 
-- [ ] 启动 Enso，检查控制台日志确认 RPC Server 启动
-- [ ] 在 Enso 终端中运行 `echo $ENSO_RPC_TOKEN` 确认环境变量已传递
-- [ ] 运行 `test-ccb-rpc.js` 测试脚本验证 RPC 连接
+- [ ] 启动 Enso，通过 RPC 创建多个 pane
+- [ ] 验证 UI 中出现多个终端窗口
+- [ ] 验证 pane 标题正确显示
+- [ ] 验证关闭 pane 时 UI 正确更新
 
 ## Risks
 
-- PTY 环境变量未正确继承：检查 PtyManager 的 env 参数
-- 端口冲突：EnsoRPCServer 已实现自动端口回退
+- 现有 UI 架构可能需要调整以适配多 Pane
+- 终端组件可能需要调整尺寸和样式
 
 ## Commands (copy/paste)
 
 ```powershell
 # 进入 worktree
-Set-Location "F:\code\cc\wt\ccb-enso-integration"
+Set-Location "F:\code\cc\wt\ccb-multi-pane-ui"
 
 # 安装依赖（如需要）
 npm install
@@ -152,9 +150,9 @@ npm run dev
 
 ## Done When (DoD)
 
-- [ ] RPC Server 随 Enso 启动自动初始化
-- [ ] 环境变量 `ENSO_RPC_*` 传递给 PTY 子进程
+- [ ] Renderer 支持多 AgentTerminal 同时显示
+- [ ] IPC 监听 `CCB_TERMINAL_OPEN` 事件并动态创建终端组件
+- [ ] 基本的分屏布局（网格或分栏）
 - [ ] `npm run build` 成功
 - [ ] `npm run lint` 通过
-- [ ] 手动测试确认 RPC 连接可用
 - [ ] report.md 完成
