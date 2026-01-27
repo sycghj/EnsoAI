@@ -398,47 +398,86 @@ jobs:
           echo "SHA256: $SHA"
           echo "sha256=$SHA" >> $GITHUB_OUTPUT
 
-      - name: Setup SSH for AUR
+      - name: Generate PKGBUILD
+        env:
+          PKGVER: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          cat > PKGBUILD << 'PKGBUILD_EOF'
+          pkgname=ensoai
+          pkgver=PKGVER_PLACEHOLDER
+          pkgrel=1
+          pkgdesc="Multiple AI Agents, Parallel Workflow - Git worktree manager with AI integration"
+          arch=('x86_64')
+          url="https://github.com/J3n5en/EnsoAI"
+          license=('MIT')
+          depends=('electron39')
+          makedepends=('nodejs>=20' 'pnpm>=10' 'git' 'libxcrypt-compat')
+          optdepends=(
+              'claude-cli: Claude AI agent support'
+              'codex: Codex AI agent support'
+              'cursor: Cursor AI agent support'
+          )
+          source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+          sha256sums=('SHA256_PLACEHOLDER')
 
-      - name: Clone AUR repo
-        run: |
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git clone ssh://aur@aur.archlinux.org/ensoai.git aur-repo
+          prepare() {
+              cd "$srcdir/EnsoAI-$pkgver"
+              sed -i '/"name":/a\  "homepage": "https://github.com/J3n5en/EnsoAI",' package.json
+              export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+              pnpm install --frozen-lockfile
+          }
 
-      - name: Update PKGBUILD
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SHA256="${{ steps.sha.outputs.sha256 }}"
-          cd aur-repo
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
+          build() {
+              cd "$srcdir/EnsoAI-$pkgver"
+              export NODE_ENV=production
+              pnpm build:linux
+          }
 
-      - name: Generate .SRCINFO and commit
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          cd aur-repo
+          package() {
+              cd "$srcdir/EnsoAI-$pkgver"
+              install -dm755 "$pkgdir/usr/lib/$pkgname"
+              if [ -d "dist/linux-unpacked/resources" ]; then
+                  cp -r dist/linux-unpacked/resources "$pkgdir/usr/lib/$pkgname/"
+              fi
+              install -dm755 "$pkgdir/usr/bin"
+              cat > "$pkgdir/usr/bin/$pkgname" << 'EOF'
+          #!/bin/sh
+          exec electron39 /usr/lib/ensoai/resources/app.asar "$@"
+          EOF
+              chmod +x "$pkgdir/usr/bin/$pkgname"
+              install -dm755 "$pkgdir/usr/share/applications"
+              cat > "$pkgdir/usr/share/applications/$pkgname.desktop" << EOF
+          [Desktop Entry]
+          Name=EnsoAI
+          Comment=Multiple AI Agents, Parallel Workflow
+          Exec=$pkgname %U
+          Icon=$pkgname
+          Type=Application
+          Categories=Development;Utility;IDE;
+          Terminal=false
+          StartupWMClass=EnsoAI
+          StartupWMClass=enso-ai
+          EOF
+              if [ -f "build/icon.png" ]; then
+                  install -Dm644 build/icon.png "$pkgdir/usr/share/pixmaps/$pkgname.png"
+              elif [ -f "resources/icon.png" ]; then
+                  install -Dm644 resources/icon.png "$pkgdir/usr/share/pixmaps/$pkgname.png"
+              fi
+              install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+          }
+          PKGBUILD_EOF
+          sed -i 's/^          //' PKGBUILD
+          sed -i "s/PKGVER_PLACEHOLDER/${PKGVER}/" PKGBUILD
+          sed -i "s/SHA256_PLACEHOLDER/${SHA256}/" PKGBUILD
 
-          # Generate .SRCINFO using Docker Arch Linux container
-          HOST_UID=$(id -u)
-          HOST_GID=$(id -g)
-          docker run --rm -v "$PWD":/pkg archlinux:base-devel bash -c "
-            chown -R nobody:nobody /pkg
-            cd /pkg
-            su nobody -s /bin/bash -c 'makepkg --printsrcinfo > .SRCINFO'
-            chown ${HOST_UID}:${HOST_GID} .SRCINFO PKGBUILD
-          "
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add PKGBUILD .SRCINFO
-          git diff --cached --quiet || git commit -m "Update to ${VERSION}"
-
-      - name: Push to AUR
-        run: |
-          cd aur-repo
-          GIT_SSH_COMMAND="ssh -i ~/.ssh/aur" git push
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4
+        with:
+          pkgname: ensoai
+          pkgbuild: ./PKGBUILD
+          commit_username: github-actions[bot]
+          commit_email: github-actions[bot]@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.version }}"
+          force_push: true
