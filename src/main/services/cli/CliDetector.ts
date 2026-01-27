@@ -72,6 +72,13 @@ const BUILTIN_AGENT_CONFIGS: BuiltinAgentConfig[] = [
     versionFlag: '--version',
     versionRegex: /(\d+\.\d+\.\d+)/,
   },
+  {
+    id: 'ccb',
+    name: 'CCB',
+    command: 'ccb',
+    versionFlag: '--version',
+    versionRegex: /(\d+\.\d+\.\d+)/,
+  },
 ];
 
 class CliDetector {
