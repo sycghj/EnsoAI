@@ -1,7 +1,7 @@
 # CCB Enso Backend 集成状态报告
 
 **更新日期**: 2026-01-28
-**状态**: CCB Enso 环境检测与启动流程已完成，待功能测试
+**状态**: ✅ CCB Enso 端到端集成已验证通过
 
 ---
 
@@ -11,7 +11,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    CCB 功能实现进度                          │
 ├─────────────────────────────────────────────────────────────┤
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  80%              │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░  90%              │
 ├─────────────────────────────────────────────────────────────┤
 │  [✓] Enso RPC 服务器         已完成                          │
 │  [✓] 多 Pane UI 渲染层       已完成                          │
@@ -21,7 +21,7 @@
 │  [✓] Agent 选择器 UI 集成    已完成                          │
 │  [✓] ENSO_PANE_ID 环境变量   已完成                          │
 │  [✓] CCB 端 Enso 支持        已完成                          │
-│  [ ] 端到端功能测试          待执行                          │
+│  [✓] 端到端功能测试          已验证                          │
 │  [ ] Settings 配置页面       待实现                          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -30,7 +30,34 @@
 
 ## 二、最新修改 (2026-01-28)
 
-### 2.0 CCB Enso 环境检测与启动支持 ✅ (NEW)
+### 2.0 RPC Token 传递协议修复 ✅ (NEW)
+
+**问题**: CCB 启动时报错 `Invalid params`
+
+**根因分析**:
+- CCB 客户端 (`enso_rpc_client.py:86`) 将 `token` 放在 JSON-RPC 请求**顶层**
+- Enso 服务端 (`protocol.ts:67`) 期望 `token` 在 **`params` 对象内**
+
+**解决方案**:
+
+| 文件 | 修改内容 |
+|------|----------|
+| `lib/enso_rpc_client.py:82-91` | 将 token 注入到 `params` 而非请求顶层 |
+
+```python
+# 修改前
+req["token"] = self.token  # ❌ 顶层
+
+# 修改后
+effective_params["token"] = self.token  # ✅ params 内
+req["params"] = effective_params
+```
+
+**验证结果**: CCB `up` 命令成功启动所有 backend (codex, gemini, opencode, claude)
+
+---
+
+### 2.1 CCB Enso 环境检测与启动支持 ✅
 
 **问题**: CCB 启动时报错 "CCB must run inside tmux or WezTerm"
 
@@ -256,8 +283,8 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 - [x] 环境变量正确传递给子进程
 - [x] IPC 通道 Main ↔ Renderer 连通
 - [x] 多 Pane UI 渲染正常
-- [ ] **Agent 选择器显示 CCB 选项**
-- [ ] **CCB 端能连接并调用 RPC 方法**
+- [x] **Agent 选择器显示 CCB 选项**
+- [x] **CCB 端能连接并调用 RPC 方法**
 
 ### 完整功能验收
 - [ ] cask/gask/oask 工具正常工作
