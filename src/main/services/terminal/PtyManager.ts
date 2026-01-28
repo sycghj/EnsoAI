@@ -321,6 +321,11 @@ export class PtyManager {
     onExit?: (exitCode: number, signal?: number) => void
   ): string {
     const id = `pty-${++this.counter}`;
+
+    // Debug: log ENSO_RPC_* env vars
+    console.log('[PtyManager] Creating PTY, ENSO_RPC_TOKEN in process.env:', process.env.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET');
+    console.log('[PtyManager] options.env:', options.env);
+
     const home = process.env.HOME || process.env.USERPROFILE || homedir();
     const cwd = options.cwd || home;
 
@@ -363,22 +368,37 @@ export class PtyManager {
 
     let ptyProcess: pty.IPty;
 
+    // Build final env object
+    const rawEnv = {
+      ...process.env,
+      ...getProxyEnvVars(),
+      ...options.env,
+      ENSO_PANE_ID: id, // Inject PTY ID for CCB Enso backend detection
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      // Ensure proper locale for UTF-8 support (GUI apps may not inherit LANG)
+      LANG: process.env.LANG || 'en_US.UTF-8',
+      LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
+    };
+
+    // Filter out undefined/null values (Windows node-pty requires string values only)
+    const finalEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawEnv)) {
+      if (value !== undefined && value !== null) {
+        finalEnv[key] = String(value);
+      }
+    }
+
+    // Debug: verify ENSO_RPC_* in final env
+    console.log('[PtyManager] finalEnv.ENSO_RPC_TOKEN:', finalEnv.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET');
+
     try {
       ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols: options.cols || 80,
         rows: options.rows || 24,
         cwd,
-        env: {
-          ...process.env,
-          ...getProxyEnvVars(),
-          ...options.env,
-          TERM: 'xterm-256color',
-          COLORTERM: 'truecolor',
-          // Ensure proper locale for UTF-8 support (GUI apps may not inherit LANG)
-          LANG: process.env.LANG || 'en_US.UTF-8',
-          LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
-        } as Record<string, string>,
+        env: finalEnv,
       });
     } catch (error) {
       if (!isWindows) {
