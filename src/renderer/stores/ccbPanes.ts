@@ -1,4 +1,10 @@
+import { normalizePath } from '@/App/storage';
 import { create } from 'zustand';
+
+// Maximum pane slots for 2x2 layout
+const MAX_PANE_SLOTS = 4;
+
+type WorktreeKey = string;
 
 /**
  * CCB Pane information received from Main process via IPC.
@@ -8,6 +14,7 @@ export interface CCBPane {
   ptyId: string;
   cwd: string;
   title: string;
+  slotIndex: number; // 0..3 fixed slots for 2x2 layout
   createdAt: number;
 }
 
@@ -15,102 +22,200 @@ export interface CCBPane {
  * Layout configuration for CCB panes.
  */
 export interface CCBPaneLayout {
-  // Flex percentages for each pane (horizontal split)
-  flexPercents: number[];
-  // Active pane index
+  // Active slot index (0..3)
   activePaneIndex: number;
 }
 
+interface WorktreeCCBState {
+  panes: CCBPane[];
+  layout: CCBPaneLayout;
+  cwd: string | null; // original casing cwd used for PTY creation
+}
+
+type WorktreeStates = Record<WorktreeKey, WorktreeCCBState>;
+
+type ExternalAddResult = 'added' | 'ignored' | 'overflow';
+
+export interface EnsureWorktreePanesOptions {
+  desiredCount?: number;
+}
+
 interface CCBPanesState {
+  worktrees: WorktreeStates;
+
+  // Back-compat selectors for existing callers (should be avoided for new code)
   panes: CCBPane[];
   layout: CCBPaneLayout;
 
   // Actions
-  addPane: (pane: Omit<CCBPane, 'createdAt'>) => void;
+  addExternalPane: (event: { ptyId: string; cwd: string; title?: string }) => ExternalAddResult;
+  ensureWorktreePanes: (worktreePath: string, options?: EnsureWorktreePanesOptions) => Promise<void>;
   removePane: (paneId: string) => void;
-  setActivePaneIndex: (index: number) => void;
+  setActivePaneIndex: (worktreePath: string, index: number) => void;
   clearPanes: () => void;
 }
 
-/**
- * Calculate layout percentages based on pane count.
- * - 1 pane: 100%
- * - 2 panes: 50% each
- * - 3 panes: 33.33% each
- * - 4 panes: 25% each
- */
-function calculateFlexPercents(paneCount: number): number[] {
-  if (paneCount <= 0) return [];
-  const percent = 100 / paneCount;
-  return Array(paneCount).fill(percent);
+function clampSlotIndex(index: number): number {
+  return Math.max(0, Math.min(index, MAX_PANE_SLOTS - 1));
 }
 
-export const useCCBPanesStore = create<CCBPanesState>((set) => ({
-  panes: [],
-  layout: {
-    flexPercents: [],
-    activePaneIndex: 0,
-  },
+function findFreeSlot(panes: CCBPane[]): number | null {
+  const used = new Set(panes.map((p) => p.slotIndex));
+  for (let i = 0; i < MAX_PANE_SLOTS; i += 1) {
+    if (!used.has(i)) return i;
+  }
+  return null;
+}
 
-  addPane: (pane) =>
+function hasPaneId(worktrees: WorktreeStates, paneId: string): boolean {
+  for (const state of Object.values(worktrees)) {
+    if (state.panes.some((p) => p.pane_id === paneId)) return true;
+  }
+  return false;
+}
+
+const ensureInFlightByWorktree = new Map<WorktreeKey, Promise<void>>();
+
+export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
+  worktrees: {},
+
+  // Back-compat selectors for existing callers (should be avoided for new code)
+  panes: [],
+  layout: { activePaneIndex: 0 },
+
+  addExternalPane: (event) => {
+    const key = normalizePath(event.cwd);
+
+    const current = get().worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null };
+
+    // Ignore duplicates (never destroy a PTY we already track)
+    if (hasPaneId(get().worktrees, event.ptyId)) return 'ignored';
+
+    const slotIndex = findFreeSlot(current.panes);
+    if (slotIndex === null) {
+      return 'overflow';
+    }
+
     set((state) => {
-      // Check if pane already exists (prevent duplicates)
-      if (state.panes.some((p) => p.pane_id === pane.pane_id)) {
+      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null };
+      // Re-check inside set (race-safe)
+      if (hasPaneId(state.worktrees, event.ptyId)) {
+        return state;
+      }
+      if (prev.panes.some((p) => p.slotIndex === slotIndex)) {
         return state;
       }
 
-      const newPanes = [
-        ...state.panes,
+      const nextPanes: CCBPane[] = [
+        ...prev.panes,
         {
-          ...pane,
+          pane_id: event.ptyId,
+          ptyId: event.ptyId,
+          cwd: event.cwd,
+          title: event.title ?? 'CCB Terminal',
+          slotIndex,
           createdAt: Date.now(),
         },
       ];
 
       return {
-        panes: newPanes,
-        layout: {
-          flexPercents: calculateFlexPercents(newPanes.length),
-          activePaneIndex: newPanes.length - 1, // Activate new pane
+        ...state,
+        worktrees: {
+          ...state.worktrees,
+          [key]: {
+            panes: nextPanes,
+            layout: { activePaneIndex: slotIndex },
+            cwd: prev.cwd ?? event.cwd,
+          },
         },
       };
-    }),
+    });
+
+    return 'added';
+  },
+
+  ensureWorktreePanes: async (worktreePath, _options) => {
+    // Note: With CCB RPC approach (方案 B), panes are created by CCB Python side
+    // via RPC create_pane calls. This function only initializes the worktree state
+    // and waits for CCB to create panes through the RPC server.
+    // The desiredCount option is ignored - pane count is determined by CCB.
+
+    const key = normalizePath(worktreePath);
+
+    const existingInFlight = ensureInFlightByWorktree.get(key);
+    if (existingInFlight) return existingInFlight;
+
+    const task = (async () => {
+      // Ensure worktree state exists and capture cwd (preserve original casing if possible)
+      set((state) => {
+        const prev = state.worktrees[key];
+        if (prev) {
+          return prev.cwd ? state : { ...state, worktrees: { ...state.worktrees, [key]: { ...prev, cwd: worktreePath } } };
+        }
+        return {
+          ...state,
+          worktrees: {
+            ...state.worktrees,
+            [key]: { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath },
+          },
+        };
+      });
+
+      // Panes will be created by CCB via RPC create_pane calls.
+      // The CCB_TERMINAL_OPEN IPC event (handled by initCCBPaneListener) will
+      // trigger addExternalPane to add panes to the UI as they are created.
+    })().finally(() => {
+      ensureInFlightByWorktree.delete(key);
+    });
+
+    ensureInFlightByWorktree.set(key, task);
+    return task;
+  },
 
   removePane: (paneId) =>
     set((state) => {
-      const paneIndex = state.panes.findIndex((p) => p.pane_id === paneId);
-      if (paneIndex === -1) return state;
+      let changed = false;
+      const nextWorktrees: WorktreeStates = { ...state.worktrees };
 
-      const newPanes = state.panes.filter((p) => p.pane_id !== paneId);
-      const newActivePaneIndex = Math.min(
-        state.layout.activePaneIndex,
-        Math.max(0, newPanes.length - 1)
-      );
+      for (const [key, wt] of Object.entries(state.worktrees)) {
+        const index = wt.panes.findIndex((p) => p.pane_id === paneId);
+        if (index === -1) continue;
+
+        changed = true;
+        const nextPanes = wt.panes.filter((p) => p.pane_id !== paneId);
+        const activePaneIndex = clampSlotIndex(wt.layout.activePaneIndex);
+        nextWorktrees[key] = { ...wt, panes: nextPanes, layout: { activePaneIndex } };
+      }
+
+      return changed ? { ...state, worktrees: nextWorktrees } : state;
+    }),
+
+  setActivePaneIndex: (worktreePath, index) =>
+    set((state) => {
+      const key = normalizePath(worktreePath);
+      const wt = state.worktrees[key];
+      if (!wt) return state;
 
       return {
-        panes: newPanes,
-        layout: {
-          flexPercents: calculateFlexPercents(newPanes.length),
-          activePaneIndex: newActivePaneIndex,
+        ...state,
+        worktrees: {
+          ...state.worktrees,
+          [key]: {
+            ...wt,
+            layout: {
+              ...wt.layout,
+              activePaneIndex: clampSlotIndex(index),
+            },
+          },
         },
       };
     }),
 
-  setActivePaneIndex: (index) =>
-    set((state) => ({
-      layout: {
-        ...state.layout,
-        activePaneIndex: Math.max(0, Math.min(index, state.panes.length - 1)),
-      },
-    })),
-
   clearPanes: () =>
     set({
+      worktrees: {},
       panes: [],
-      layout: {
-        flexPercents: [],
-        activePaneIndex: 0,
-      },
+      layout: { activePaneIndex: 0 },
     }),
 }));
 
@@ -123,16 +228,15 @@ export function initCCBPaneListener(): () => void {
   // Make init idempotent to avoid accidental double subscriptions.
   if (ccbPaneListenerCleanup) return ccbPaneListenerCleanup;
 
-  const { addPane, removePane } = useCCBPanesStore.getState();
+  const { addExternalPane, removePane } = useCCBPanesStore.getState();
 
   // Listen for new pane creation
   const unsubscribeOpen = window.electronAPI.ccb.onTerminalOpen((event) => {
-    addPane({
-      pane_id: event.ptyId,
-      ptyId: event.ptyId,
-      cwd: event.cwd,
-      title: event.title ?? 'CCB Terminal',
-    });
+    const result = addExternalPane(event);
+    if (result === 'overflow') {
+      // Slots are full for this worktree: destroy the extra PTY to avoid leaks.
+      void window.electronAPI.terminal.destroy(event.ptyId);
+    }
   });
 
   // Listen for terminal exit to remove panes

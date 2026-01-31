@@ -1,7 +1,7 @@
 # CCB Enso Backend 集成状态报告
 
-**更新日期**: 2026-01-28
-**状态**: ✅ CCB Enso 端到端集成已验证通过
+**更新日期**: 2026-01-31
+**状态**: ⚠️ Enso 端完成，等待 CCB Python 端通过 RPC 创建 Pane
 
 ---
 
@@ -11,49 +11,66 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    CCB 功能实现进度                          │
 ├─────────────────────────────────────────────────────────────┤
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░  90%              │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  80%              │
 ├─────────────────────────────────────────────────────────────┤
 │  [✓] Enso RPC 服务器         已完成                          │
 │  [✓] 多 Pane UI 渲染层       已完成                          │
-│  [✓] Pane 状态管理           已完成                          │
+│  [✓] Pane 状态管理           已完成 (方案 B 重构)             │
 │  [✓] IPC 通信机制            已完成                          │
-│  [✓] 单端测试脚本            已完成                          │
 │  [✓] Agent 选择器 UI 集成    已完成                          │
 │  [✓] ENSO_PANE_ID 环境变量   已完成                          │
-│  [✓] CCB 端 Enso 支持        已完成                          │
-│  [✓] 端到端功能测试          已验证                          │
+│  [⚠] CCB 端 Enso 支持        需验证 RPC 创建 Pane 流程        │
+│  [ ] 端到端功能测试          待验证                          │
 │  [ ] Settings 配置页面       待实现                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 二、最新修改 (2026-01-28)
+## 二、最新修改 (2026-01-31)
 
-### 2.0 RPC Token 传递协议修复 ✅ (NEW)
+### 2.0 Pane 创建策略重构：方案 B ✅ (NEW)
 
-**问题**: CCB 启动时报错 `Invalid params`
+**问题**: CCB UI 显示 4 个窗口，但只显示空的 PowerShell 提示符，没有运行 agent
 
 **根因分析**:
-- CCB 客户端 (`enso_rpc_client.py:86`) 将 `token` 放在 JSON-RPC 请求**顶层**
-- Enso 服务端 (`protocol.ts:67`) 期望 `token` 在 **`params` 对象内**
+- `ensureWorktreePanes` 主动创建 4 个空 PTY
+- 但没有传递 `initialCommand` 参数
+- 所以 PTY 只显示 PowerShell 提示符
 
-**解决方案**:
+**架构决策**:
 
-| 文件 | 修改内容 |
-|------|----------|
-| `lib/enso_rpc_client.py:82-91` | 将 token 注入到 `params` 而非请求顶层 |
+用户选择 **方案 B** - CCB Python 端通过 RPC 创建 Pane
 
-```python
-# 修改前
-req["token"] = self.token  # ❌ 顶层
+| 方案 | 描述 | 选择 |
+|------|------|------|
+| 方案 A | Enso 主动创建 PTY 并执行预配置命令 | ❌ |
+| **方案 B** | CCB Python 端通过 RPC `create_pane` 创建 | ✅ |
 
-# 修改后
-effective_params["token"] = self.token  # ✅ params 内
-req["params"] = effective_params
+**修改内容**:
+
+| 文件 | 修改 |
+|------|------|
+| `src/renderer/stores/ccbPanes.ts` | 移除主动创建空 PTY 逻辑，等待 RPC 创建 |
+| `src/renderer/components/chat/CCBPaneLayout.tsx` | 空状态显示 "Waiting for CCB connection" |
+
+**当前流程**:
+
 ```
-
-**验证结果**: CCB `up` 命令成功启动所有 backend (codex, gemini, opencode, claude)
+Enso 启动
+    ↓
+RPC Server 启动 (127.0.0.1:8765) ✅
+    ↓
+用户选择 CCB agent
+    ↓
+UI 显示 2x2 空格子，提示 "Waiting for CCB connection"
+    ↓
+【CCB Python 端】调用 RPC create_pane(command="claude", ...)
+    ↓
+CCBCore.createPane 创建 PTY 并执行命令
+    ↓
+IPC CCB_TERMINAL_OPEN → addExternalPane → UI 显示终端
+```
 
 ---
 
@@ -193,30 +210,33 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 
 ## 四、下一步计划
 
-### Phase 1: UI 集成 (优先级: P0)
+### Phase 1: 验证 CCB Python 端 RPC 创建 Pane (优先级: P0)
 
 ```
-目标: 让用户能在界面中看到并选择 CCB agent
+目标: 确保 CCB Python 端能通过 RPC 创建 agent pane
 
 步骤:
-1. 在 AGENT_INFO 添加 ccb 条目
-2. 在 BUILTIN_AGENT_IDS 添加 'ccb'
-3. 在 defaultAgentSettings 添加 CCB 配置
-4. 更新 TypeScript 类型定义
-5. 测试 Agent 选择器显示 CCB 选项
+1. 确认 CCB Python 端 EnsoBackend 实现
+2. 验证 _start_provider_enso() 调用 RPC create_pane
+3. 测试 CCB up 命令是否成功创建 pane
+4. 确认 UI 正确显示创建的终端
+
+关键代码路径:
+- CCB: _start_provider_enso() → EnsoBackend.create_pane()
+- Enso: CCBCore.createPane() → PtyManager.create(initialCommand)
+- UI: CCB_TERMINAL_OPEN IPC → addExternalPane()
 ```
 
-### Phase 2: 联调联测 (优先级: P0)
+### Phase 2: 端到端联调 (优先级: P0)
 
 ```
-目标: 验证 CCB 与 Enso 的完整通信链路
+目标: 验证完整的 CCB 多 agent 协作流程
 
-步骤:
-1. 确认 CCB 代码库位置和 Python 环境
-2. 启动 Enso 应用，获取 RPC 连接信息
-3. 运行 CCB 端连接测试
-4. 测试 create_pane/send_text/get_text 全链路
-5. 测试 cask/gask/oask 工具链
+测试场景:
+1. CCB up claude codex - 启动两个 agent
+2. 在 Claude 中调用 cask 工具
+3. 验证 Codex pane 收到任务
+4. 验证结果返回 Claude
 ```
 
 ### Phase 3: 功能完善 (优先级: P1)
@@ -228,7 +248,7 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 1. Settings 页面添加 CCB 配置项
 2. 多 Pane 布局优化
 3. 错误处理和用户提示
-4. 性能优化 (RPC < 10ms, 文本注入 < 50ms)
+4. 性能优化
 ```
 
 ---
@@ -282,9 +302,10 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 - [x] RPC Server 正常启动和监听
 - [x] 环境变量正确传递给子进程
 - [x] IPC 通道 Main ↔ Renderer 连通
-- [x] 多 Pane UI 渲染正常
-- [x] **Agent 选择器显示 CCB 选项**
-- [x] **CCB 端能连接并调用 RPC 方法**
+- [x] 多 Pane UI 渲染正常 (2x2 固定布局)
+- [x] Agent 选择器显示 CCB 选项
+- [x] Enso 端等待 CCB RPC 创建 Pane (方案 B)
+- [ ] **CCB Python 端通过 RPC 创建 agent pane**
 
 ### 完整功能验收
 - [ ] cask/gask/oask 工具正常工作
@@ -294,4 +315,4 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 
 ---
 
-**下次会话提示**: 从 Phase 1 (UI 集成) 开始，添加 CCB 到 Agent 选择器，然后进行联调联测。
+**下次会话提示**: 验证 CCB Python 端 `_start_provider_enso()` 是否正确调用 RPC `create_pane` 方法。
