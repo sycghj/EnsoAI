@@ -190,6 +190,7 @@ export const zhTranslations: Record<string, string> = {
   Look: '外观',
   'Manage Agent sessions': '设置 Agent session 管理快捷键',
   Main: 'Main',
+  Merged: '已合并',
   Modified: '修改',
   More: '查看更多',
   'Move to Group': '移动到分组',

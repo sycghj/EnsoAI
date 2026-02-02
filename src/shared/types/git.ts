@@ -16,6 +16,7 @@ export interface GitBranch {
   current: boolean;
   commit: string;
   label: string;
+  merged?: boolean;
 }
 
 export interface GitLogEntry {

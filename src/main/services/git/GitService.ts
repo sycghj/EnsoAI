@@ -80,7 +80,70 @@ export class GitService {
       }
     }
 
-    return branches;
+    // Determine base branch for merge detection
+    let baseBranch: string | null = null;
+
+    // 1. Try to get remote default branch (origin/HEAD)
+    try {
+      const originHead = await this.git.raw([
+        'symbolic-ref',
+        '--quiet',
+        'refs/remotes/origin/HEAD',
+      ]);
+      // Example output: "refs/remotes/origin/main"
+      const match = originHead.trim().match(/^refs\/remotes\/(.+)$/);
+      if (match) {
+        baseBranch = match[1]; // "origin/main"
+      }
+    } catch {
+      // origin/HEAD not set, fall through to fallback
+    }
+
+    // 2. Fallback to common main branch names
+    if (!baseBranch) {
+      const localNames = ['main', 'master', 'develop'];
+      const found = branches.find((b) => localNames.includes(b.name));
+      if (found) {
+        baseBranch = found.name;
+      }
+    }
+
+    // 3. If still no base branch, skip merged detection
+    if (!baseBranch) {
+      return branches;
+    }
+
+    // Get list of branches merged into base branch
+    const mergedSet = new Set<string>();
+    try {
+      const mergedOutput = await this.git.raw(['branch', '-a', '--merged', baseBranch]);
+      const mergedLines = mergedOutput
+        .trim()
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line && !line.includes('->')) // Skip symbolic refs like "remotes/origin/HEAD -> origin/main"
+        .map((line) => line.replace(/^[*+]\s*/, '')); // Remove current branch (*) or worktree (+) marker
+
+      for (const line of mergedLines) {
+        mergedSet.add(line);
+      }
+    } catch {
+      // If merged detection fails, just return branches without merged info
+      return branches;
+    }
+
+    // Extract base branch name without remote prefix
+    const baseBranchName = baseBranch.replace(/^remotes\//, '').replace(/^origin\//, '');
+
+    // Mark branches as merged
+    return branches.map((branch) => ({
+      ...branch,
+      merged:
+        mergedSet.has(branch.name) &&
+        branch.name !== baseBranchName &&
+        branch.name !== `remotes/origin/${baseBranchName}` &&
+        branch.name !== baseBranch,
+    }));
   }
 
   async getLog(maxCount = 50, skip = 0): Promise<GitLogEntry[]> {

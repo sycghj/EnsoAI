@@ -764,6 +764,7 @@ export function TreeSidebar({
                                 key={worktree.path}
                                 worktree={worktree}
                                 repoPath={repo.path}
+                                branches={branches}
                                 isActive={activeWorktree?.path === worktree.path}
                                 onClick={() => {
                                   // Select repo if not already selected
@@ -1099,6 +1100,7 @@ interface WorktreeTreeItemProps {
   onDrop?: (e: React.DragEvent) => void;
   showDropIndicator?: boolean;
   dropDirection?: 'top' | 'bottom' | null;
+  branches?: GitBranchType[];
 }
 
 function WorktreeTreeItem({
@@ -1116,6 +1118,7 @@ function WorktreeTreeItem({
   onDrop,
   showDropIndicator,
   dropDirection,
+  branches = [],
 }: WorktreeTreeItemProps) {
   const { t } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1126,6 +1129,13 @@ function WorktreeTreeItem({
   const branchDisplay = worktree.branch || t('Detached');
   const isPrunable = worktree.prunable;
   const glowEnabled = useGlowEffectEnabled();
+
+  // Check if branch is merged to main
+  const isMerged = useMemo(() => {
+    if (!worktree.branch || isMain) return false;
+    const branch = branches.find((b) => b.name === worktree.branch);
+    return branch?.merged === true;
+  }, [worktree.branch, isMain, branches]);
 
   // Subscribe to activity store
   const activities = useWorktreeActivityStore((s) => s.activities);
@@ -1273,6 +1283,10 @@ function WorktreeTreeItem({
         ) : isMain ? (
           <span className="relative z-10 shrink-0 rounded bg-emerald-500/20 px-1 py-0.5 text-[9px] font-medium uppercase text-emerald-600 dark:text-emerald-400">
             {t('Main')}
+          </span>
+        ) : isMerged ? (
+          <span className="relative z-10 shrink-0 rounded bg-success/20 px-1 py-0.5 text-[9px] font-medium uppercase text-success-foreground">
+            {t('Merged')}
           </span>
         ) : null}
         {/* Behind count - remote commits not yet pulled, click to pull */}
