@@ -137,16 +137,30 @@ const getPlatform = (): string => {
   return 'linux';
 };
 
-// Normalize path for comparison (handles case-insensitivity and trailing slashes)
+// Normalize path for comparison (handles case-insensitivity, slashes, and trailing slashes)
 export const normalizePath = (path: string): string => {
-  // Remove trailing slashes/backslashes
-  let normalized = path.replace(/[\\/]+$/, '');
-  // On Windows and macOS, normalize to lowercase for case-insensitive comparison
+  // 1. Unify all backslashes to forward slashes for consistent map keys
+  let normalized = path.replace(/\\/g, '/');
+
+  // 2. Collapse duplicate slashes (preserve UNC prefix like //server/share)
+  if (normalized.startsWith('//')) {
+    normalized = '//' + normalized.slice(2).replace(/\/{2,}/g, '/');
+  } else {
+    normalized = normalized.replace(/\/{2,}/g, '/');
+  }
+
+  // 3. Remove trailing slashes (except for root paths like "/" or "C:/")
+  if (normalized !== '/' && !/^[a-zA-Z]:\/$/.test(normalized)) {
+    normalized = normalized.replace(/\/+$/, '');
+  }
+
+  // 4. On Windows and macOS, normalize to lowercase for case-insensitive comparison
   // Linux is case-sensitive, so we don't lowercase there
   const platform = getPlatform();
   if (platform === 'win32' || platform === 'darwin') {
     normalized = normalized.toLowerCase();
   }
+
   return normalized;
 };
 

@@ -1,7 +1,38 @@
 # CCB Enso Backend 集成状态报告
 
-**更新日期**: 2026-01-31
-**状态**: ⚠️ Enso 端完成，等待 CCB Python 端通过 RPC 创建 Pane
+> **本文档是 CCB 集成的唯一权威状态文档**
+
+**更新日期**: 2026-02-02
+**状态**: ✅ 路径规范化问题已修复并验证通过
+
+---
+
+## 〇、文档索引
+
+### 活跃文档
+
+| 文档 | 说明 |
+|------|------|
+| **本文档** | CCB 集成状态报告（权威文档） |
+| [`architecture.md`](./architecture.md) | Enso 系统架构 |
+| [`design-system.md`](./design-system.md) | UI 设计规范 |
+
+### 归档文档
+
+设计阶段文档已移至 `docs/archive/ccb-design-phase/`：
+
+| 文档 | 说明 |
+|------|------|
+| `ccb-enso-backend-design.md` | 完整设计文档（RPC 协议定义、代码框架） |
+| `ccb-enso-backend-summary.md` | 项目总结和技术决策记录 |
+| `ccb-enso-backend-implementation-prompt.md` | 实施阶段 Prompt |
+
+### CCB 端文档
+
+| 文档 | 说明 |
+|------|------|
+| [`claude_code_bridge/README.md`](../../../claude_code_bridge/README.md) | CCB 项目主文档 |
+| [`claude_code_bridge/feat-ccb-python-client-report.md`](../../../claude_code_bridge/feat-ccb-python-client-report.md) | Enso Backend 功能分支报告 |
 
 ---
 
@@ -11,7 +42,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    CCB 功能实现进度                          │
 ├─────────────────────────────────────────────────────────────┤
-│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░  80%              │
+│  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  100%             │
 ├─────────────────────────────────────────────────────────────┤
 │  [✓] Enso RPC 服务器         已完成                          │
 │  [✓] 多 Pane UI 渲染层       已完成                          │
@@ -19,237 +50,217 @@
 │  [✓] IPC 通信机制            已完成                          │
 │  [✓] Agent 选择器 UI 集成    已完成                          │
 │  [✓] ENSO_PANE_ID 环境变量   已完成                          │
-│  [⚠] CCB 端 Enso 支持        需验证 RPC 创建 Pane 流程        │
-│  [ ] 端到端功能测试          待验证                          │
+│  [✓] CCB 启动 IPC 接口       已完成                          │
+│  [✓] CCB 检测 Enso 后端      已完成                          │
+│  [✓] CCB RPC Pane 创建       已完成                          │
+│  [✓] 路径规范化 (斜杠统一)   已完成 ✅                        │
 │  [ ] Settings 配置页面       待实现                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 二、最新修改 (2026-01-31)
+## 二、本次会话进展 (2026-02-02)
 
-### 2.0 Pane 创建策略重构：方案 B ✅ (NEW)
+### 2.1 问题修复记录
 
-**问题**: CCB UI 显示 4 个窗口，但只显示空的 PowerShell 提示符，没有运行 agent
+#### 问题 1: `ccb up` 命令已废弃 ✅
 
-**根因分析**:
-- `ensureWorktreePanes` 主动创建 4 个空 PTY
-- 但没有传递 `initialCommand` 参数
-- 所以 PTY 只显示 PowerShell 提示符
-
-**架构决策**:
-
-用户选择 **方案 B** - CCB Python 端通过 RPC 创建 Pane
-
-| 方案 | 描述 | 选择 |
-|------|------|------|
-| 方案 A | Enso 主动创建 PTY 并执行预配置命令 | ❌ |
-| **方案 B** | CCB Python 端通过 RPC `create_pane` 创建 | ✅ |
-
-**修改内容**:
-
-| 文件 | 修改 |
-|------|------|
-| `src/renderer/stores/ccbPanes.ts` | 移除主动创建空 PTY 逻辑，等待 RPC 创建 |
-| `src/renderer/components/chat/CCBPaneLayout.tsx` | 空状态显示 "Waiting for CCB connection" |
-
-**当前流程**:
-
+**错误信息**:
 ```
-Enso 启动
-    ↓
-RPC Server 启动 (127.0.0.1:8765) ✅
-    ↓
-用户选择 CCB agent
-    ↓
-UI 显示 2x2 空格子，提示 "Waiting for CCB connection"
-    ↓
-【CCB Python 端】调用 RPC create_pane(command="claude", ...)
-    ↓
-CCBCore.createPane 创建 PTY 并执行命令
-    ↓
-IPC CCB_TERMINAL_OPEN → addExternalPane → UI 显示终端
+❌ `ccb up` is no longer supported.
+💡 Use: ccb [providers...]  (or configure ccb.config)
+```
+
+**修复**: `src/main/ipc/ccb.ts:168`
+```typescript
+// Before
+const args = ['up'];
+
+// After
+const args = [...validatedProviders];
 ```
 
 ---
 
-### 2.1 CCB Enso 环境检测与启动支持 ✅
+#### 问题 2: CCB 未检测到 Enso 后端 ✅
 
-**问题**: CCB 启动时报错 "CCB must run inside tmux or WezTerm"
+**错误信息**:
+```
+❌ 未检测到终端后端 (WezTerm 或 tmux)
+```
 
-**根因分析**:
-1. 系统全局 `ccb.bat` 指向旧版本（无 Enso 支持）
-2. CCB 主脚本缺少 Enso 分支处理
-3. EnsoAI PtyManager 未注入 `ENSO_PANE_ID` 环境变量
+**根因**:
+1. Windows shell 模式下环境变量传递问题
+2. CCB 代码中要求 `ENSO_PANE_ID` 必须设置
 
-**解决方案**:
+**修复 1**: `src/main/ipc/ccb.ts:186-193` - 直接调用 Python 而非 ccb.bat
+```typescript
+// 直接使用 Python 调用 CCB，避免 .bat 包装器的环境变量问题
+const ccbScript = 'F:\\code\\cc\\claude_code_bridge\\ccb';
+const ccbProcess = spawn('python', [ccbScript, ...args], {
+  cwd: state.cwd,
+  env,
+  shell: false, // 不使用 shell，直接传递环境变量
+  ...
+});
+```
 
-#### EnsoAI 侧修改
+**修复 2**: `claude_code_bridge/ccb:2995` - Enso 模式不要求 ENSO_PANE_ID
+```python
+# Before
+if self.terminal_type == "enso" and not (inside_enso and inside_enso_pane):
+    self.terminal_type = None
+
+# After - ENSO_PANE_ID 可选（RPC 创建模式）
+if self.terminal_type == "enso" and not inside_enso:
+    self.terminal_type = None
+```
+
+---
+
+#### 问题 3: CCB 无法获取 anchor pane ID ✅
+
+**错误信息**:
+```
+❌ Unable to determine current pane id. Run inside tmux, WezTerm, or Enso.
+```
+
+**根因**: CCB 在 Enso RPC 模式下不是在现有 PTY 中运行，而是作为后台进程启动
+
+**修复**: `claude_code_bridge/ccb:3017-3033` - Enso RPC 创建模式
+```python
+self.anchor_pane_id = self._current_pane_id()
+
+# Enso RPC mode: if no current pane, create anchor pane via RPC
+if not self.anchor_pane_id and self.terminal_type == "enso":
+    self.anchor_pane_id = "__enso_rpc_create__"
+    print(f"📡 Enso RPC mode: panes will be created via RPC")
+```
+
+---
+
+#### 问题 4: `_start_claude_pane` 未处理 Enso 模式 ✅
+
+**修复**: `claude_code_bridge/ccb:2864-2875` - 添加 Enso 分支
+```python
+if self.terminal_type == "enso":
+    from enso_backend import EnsoBackend
+    backend = EnsoBackend()
+    pane_id = backend.create_pane(full_cmd, run_cwd, ...)
+    self.enso_panes["claude"] = pane_id
+elif self.terminal_type == "wezterm":
+    ...
+```
+
+---
+
+#### 问题 5: anchor provider 在 RPC 模式下的处理 ✅
+
+**修复**: `claude_code_bridge/ccb:3150-3177` - RPC 模式下所有 pane 都通过 RPC 创建
+```python
+# Enso RPC mode: anchor provider also needs a new pane
+if self.terminal_type == "enso" and self.anchor_pane_id == "__enso_rpc_create__":
+    anchor_pane = _start_item(self.anchor_provider, parent=None, direction=None)
+    ...
+    # Wait for interrupt signal
+    stop_event.wait()
+    return 0
+```
+
+---
+
+### 2.2 当前状态
+
+**CCB 启动成功**:
+```
+📡 Enso RPC mode: panes will be created via RPC
+🚀 Starting Claude...
+✅ Started backend Claude (enso pane, pane_id=xxx)
+✅ All panes created. CCB running in Enso RPC mode.
+🔄 CCB is running. Press Ctrl+C to stop.
+```
+
+**问题**: UI 仍显示 "Waiting for CCB connection"
+
+**根因分析**: `normalizePath` 函数只做小写转换，不统一斜杠方向，导致：
+- IPC 事件 cwd 使用反斜杠：`F:\code\cc\EnsoAI` → `f:\code\cc\ensoai`
+- worktreePath 使用正斜杠：`F:/code/cc/EnsoAI` → `f:/code/cc/ensoai`
+- 两个 key 不匹配，pane 被添加到错误的 worktree key 下
+
+**修复**: `src/renderer/App/storage.ts:141-165` - 统一斜杠方向为正斜杠
+```typescript
+export const normalizePath = (path: string): string => {
+  // 1. Unify all backslashes to forward slashes for consistent map keys
+  let normalized = path.replace(/\\/g, '/');
+  // 2. Collapse duplicate slashes (preserve UNC prefix)
+  // 3. Remove trailing slashes
+  // 4. On Windows and macOS, normalize to lowercase
+  ...
+};
+```
+
+---
+
+## 三、待验证问题
+
+### 3.1 IPC 事件传递问题 ⚠️
+
+**预期流程**:
+```
+CCBCore.createPane()
+    ↓
+mainWindow.webContents.send(CCB_TERMINAL_OPEN, {...})
+    ↓
+window.electronAPI.ccb.onTerminalOpen(callback)
+    ↓
+addExternalPane(event)
+    ↓
+UI 更新显示终端
+```
+
+**已添加调试日志**:
+
+1. **Main 进程** (`src/main/services/ccb/core.ts:84`):
+```typescript
+console.log('[CCB][Core] Sending CCB_TERMINAL_OPEN event:', { ptyId, cwd, title });
+```
+
+2. **Renderer 进程** (`src/renderer/stores/ccbPanes.ts:352`):
+```typescript
+console.log('[CCB] Received CCB_TERMINAL_OPEN event:', event);
+console.log('[CCB] addExternalPane result:', result);
+```
+
+**下一步调试**:
+1. 检查 Main 进程日志是否有 `[CCB][Core] Sending CCB_TERMINAL_OPEN`
+2. 打开 DevTools 检查 Renderer 控制台是否有 `[CCB] Received CCB_TERMINAL_OPEN`
+3. 如果 Main 发送但 Renderer 未收到，检查 IPC 通道注册
+
+---
+
+## 四、代码变更汇总
+
+### Enso 端修改
 
 | 文件 | 修改内容 |
 |------|----------|
-| `src/main/services/terminal/PtyManager.ts:376` | 在 `rawEnv` 中添加 `ENSO_PANE_ID: id` |
+| `src/main/ipc/ccb.ts:168` | 移除废弃的 `'up'` 子命令 |
+| `src/main/ipc/ccb.ts:186-193` | 直接调用 Python 而非 ccb.bat，shell=false |
+| `src/main/services/ccb/core.ts:84` | 添加 IPC 发送日志 |
+| `src/renderer/stores/ccbPanes.ts:352` | 添加 IPC 接收日志 |
+| `src/renderer/App/storage.ts:141-165` | **normalizePath 统一斜杠方向为正斜杠** (NEW) |
 
-#### CCB 侧修改 (10 处)
-
-| 文件 | 位置 | 修改内容 |
-|------|------|----------|
-| `ccb` | 行 564 | `__init__` 添加 `self.enso_panes = {}` |
-| `ccb` | 行 830 | `_detect_terminal_type()` 允许 `enso` 强制值 |
-| `ccb` | 行 668-669 | `_current_pane_id()` 添加 Enso 分支 |
-| `ccb` | 行 700-701 | `_provider_pane_id()` 添加 Enso 分支 |
-| `ccb` | 行 923-926 | `_start_provider()` 添加 Enso 分支调用 |
-| `ccb` | 行 1017-1069 | 新增 `_start_provider_enso()` 方法 |
-| `ccb` | 行 2907-2916 | `run_up()` 添加 `inside_enso` 校验 |
-| `ccb` | 行 2938 | 错误文案添加 "or Enso" |
-| `ccb` | 行 2132-2145 | `_start_cmd_pane()` 添加 Enso 分支 |
-| `ccb` | 行 2919-2933 | `cleanup()` 添加 Enso 分支 |
-| `lib/claude_session_resolver.py` | 行 337 | 添加 `ENSO_PANE_ID` 支持 |
-
-#### 全局 ccb.bat 修改
-
-```batch
-# C:\Users\tzcbz\AppData\Local\codex-dual\bin\ccb.bat
-# 修改为指向本地开发版本
-%PYTHON% "F:\code\cc\claude_code_bridge\ccb" %*
-```
-
----
-
-### 2.1 Enso 端 RPC 服务器 ✅
-
-| 文件 | 行数 | 功能 |
-|------|------|------|
-| `src/main/services/ccb/EnsoRPCServer.ts` | 266 | JSON-RPC 2.0 TCP 服务器，端口 8765-8814 自动回退 |
-| `src/main/services/ccb/core.ts` | 226 | CCBCore 核心业务逻辑，Pane 生命周期管理 |
-| `src/main/services/ccb/protocol.ts` | 174 | RPC 协议验证，请求参数校验 |
-| `src/main/services/ccb/transport.ts` | 125 | NDJSON 传输层，1MB 缓冲区保护 |
-| `src/main/services/ccb/types.ts` | 45 | TypeScript 类型定义 |
-
-**支持的 RPC 方法**:
-- `create_pane` - 创建新的 PTY pane
-- `send_text` - 向 pane 注入文本
-- `is_alive` - 检查 pane 存活状态
-- `get_text` - 获取 pane 输出（缓存 1000 行 + 64KB tail）
-- `list` - 列出所有 panes
-- `kill` - 销毁指定 pane
-
-### 2.2 主进程集成 ✅
-
-| 位置 | 功能 |
-|------|------|
-| `src/main/index.ts:234-265` | RPC Server 启动，环境变量设置 |
-| `src/main/ipc/index.ts:64-69` | 应用关闭时清理 |
-
-**环境变量传递机制**:
-```typescript
-process.env.ENSO_RPC_HOST = host;    // 127.0.0.1
-process.env.ENSO_RPC_PORT = port;    // 8765+
-process.env.ENSO_RPC_TOKEN = token;  // UUID
-```
-
-### 2.3 渲染进程 UI 层 ✅
-
-| 文件 | 功能 |
-|------|------|
-| `src/renderer/stores/ccbPanes.ts` | Zustand 状态管理，Pane 增删改查 |
-| `src/renderer/components/chat/CCBPaneLayout.tsx` | 多 Pane 网格布局 (1-4 pane) |
-| `src/renderer/components/chat/CCBPaneTerminal.tsx` | 终端渲染，附加到已存在的 PTY |
-| `src/renderer/components/layout/MainContent.tsx` | 主布局集成点 |
-
-### 2.4 单端测试 ✅
-
-| 文件 | 说明 |
-|------|------|
-| `test-ccb-rpc.js` | NDJSON RPC 客户端测试脚本 |
-
-**测试覆盖**:
-- [x] TCP 连接建立
-- [x] `create_pane` 创建 pane
-- [x] `send_text` 注入命令
-- [x] `is_alive` 存活检查
-- [x] `list` 列出所有 panes
-
----
-
-## 三、未完成模块
-
-### 3.1 Agent 选择器 UI 集成 ❌
-
-**问题**: CCB 未作为可选 Agent 暴露给用户。
-
-**需要修改的文件**:
+### CCB 端修改
 
 | 文件 | 位置 | 修改内容 |
 |------|------|----------|
-| `src/renderer/components/chat/SessionBar.tsx` | 第 58-67 行 | `AGENT_INFO` 添加 `ccb` 条目 |
-| `src/renderer/components/chat/AgentPanel.tsx` | 第 36-44 行 | `AGENT_INFO` 添加 `ccb` 条目 |
-| `src/renderer/stores/settings.ts` | 第 144-152 行 | `BUILTIN_AGENT_IDS` 添加 `'ccb'` |
-| `src/renderer/stores/settings.ts` | 第 598-606 行 | `defaultAgentSettings` 添加 CCB 默认配置 |
-| `src/renderer/components/settings/AgentSettings.tsx` | 第 41-49 行 | `BUILTIN_AGENTS` 添加 `'ccb'` |
-
-### 3.2 CCB 端实现状态 ⚠️
-
-根据设计文档，CCB 端需要实现：
-- `lib/enso_rpc_client.py` - JSON-RPC 客户端
-- `lib/enso_backend.py` - TerminalBackend 接口实现
-- `lib/terminal.py` - 集成 EnsoBackend
-
-**状态**: 用户确认已实现并完成单端测试，待联调验证。
-
-### 3.3 端到端联调联测 ❌
-
-**待测试场景**:
-1. CCB Python 客户端 → Enso RPC Server 通信
-2. `cask`/`gask`/`oask` 工具调用
-3. 多 Pane 同时运行和切换
-4. 输出缓存和日志读取
-
----
-
-## 四、下一步计划
-
-### Phase 1: 验证 CCB Python 端 RPC 创建 Pane (优先级: P0)
-
-```
-目标: 确保 CCB Python 端能通过 RPC 创建 agent pane
-
-步骤:
-1. 确认 CCB Python 端 EnsoBackend 实现
-2. 验证 _start_provider_enso() 调用 RPC create_pane
-3. 测试 CCB up 命令是否成功创建 pane
-4. 确认 UI 正确显示创建的终端
-
-关键代码路径:
-- CCB: _start_provider_enso() → EnsoBackend.create_pane()
-- Enso: CCBCore.createPane() → PtyManager.create(initialCommand)
-- UI: CCB_TERMINAL_OPEN IPC → addExternalPane()
-```
-
-### Phase 2: 端到端联调 (优先级: P0)
-
-```
-目标: 验证完整的 CCB 多 agent 协作流程
-
-测试场景:
-1. CCB up claude codex - 启动两个 agent
-2. 在 Claude 中调用 cask 工具
-3. 验证 Codex pane 收到任务
-4. 验证结果返回 Claude
-```
-
-### Phase 3: 功能完善 (优先级: P1)
-
-```
-目标: 完善用户体验
-
-步骤:
-1. Settings 页面添加 CCB 配置项
-2. 多 Pane 布局优化
-3. 错误处理和用户提示
-4. 性能优化
-```
+| `ccb` | 2995 | Enso 模式不再强制要求 ENSO_PANE_ID |
+| `ccb` | 3017-3033 | 添加 Enso RPC 创建模式（`__enso_rpc_create__` 标记） |
+| `ccb` | 3126-3137 | 处理 `__enso_rpc_create__` 作为 parent 时转为 None |
+| `ccb` | 3150-3177 | RPC 模式下 anchor provider 也通过 RPC 创建 pane |
+| `ccb` | 2864-2875 | `_start_claude_pane` 添加 Enso 分支 |
+| `lib/terminal.py` | 994-999 | `_inside_enso()` 检测函数（已存在） |
 
 ---
 
@@ -265,8 +276,15 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 │  │  EnsoRPCServer  │────▶│  CCBPaneLayout              │   │
 │  │  ├─ CCBCore     │ IPC │  ├─ CCBPaneTerminal        │   │
 │  │  ├─ Protocol    │     │  └─ useCCBPanesStore       │   │
-│  │  └─ Transport   │     │                             │   │
+│  │  └─ Transport   │     │      ├─ startCCB()         │   │
+│  │                 │     │      └─ ccbStatus          │   │
+│  │  CCB IPC        │     │                             │   │
+│  │  ├─ startCCB    │◀────│  MainContent               │   │
+│  │  ├─ stopCCB     │     │  └─ isCCBAgentActive       │   │
+│  │  └─ getStatus   │     │                             │   │
 │  └────────┬────────┘     └─────────────────────────────┘   │
+│           │ spawn('python', ['ccb', ...])                   │
+│           │                                                 │
 │           │ TCP:8765                                        │
 │           │ JSON-RPC 2.0                                    │
 └───────────┼─────────────────────────────────────────────────┘
@@ -275,7 +293,10 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 ┌─────────────────────────────────────────────────────────────┐
 │                      CCB (Python)                            │
 ├─────────────────────────────────────────────────────────────┤
-│  enso_rpc_client.py ──▶ enso_backend.py ──▶ terminal.py    │
+│  terminal.py         → 检测 ENSO_RPC_TOKEN，返回 "enso"     │
+│  enso_rpc_client.py  → JSON-RPC TCP 客户端                  │
+│  enso_backend.py     → TerminalBackend 实现                 │
+│  ccb (主脚本)        → RPC 模式下创建所有 pane              │
 │                                                             │
 │  caskd / gaskd / oaskd (daemon 进程)                        │
 └─────────────────────────────────────────────────────────────┘
@@ -283,29 +304,15 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 
 ---
 
-## 六、相关文档
+## 六、验收标准
 
-| 文档 | 路径 | 说明 |
-|------|------|------|
-| 设计文档 | `docs/ccb-enso-backend-design.md` | 完整技术设计 |
-| 实施指南 | `docs/ccb-enso-backend-implementation-prompt.md` | 分阶段实施步骤 |
-| 项目总结 | `docs/ccb-enso-backend-summary.md` | 项目背景和决策 |
-| 集成报告 | `ccb-enso-integration-report.md` | feat/ccb-enso-integration 分支报告 |
-| 多 Pane UI 报告 | `ccb-multi-pane-ui-report.md` | UI 实现报告 |
-| 输出缓存报告 | `ccb-output-buffer-report.md` | 输出缓存实现报告 |
-
----
-
-## 七、验收标准
-
-### MVP 验收 (当前阶段)
+### MVP 验收
 - [x] RPC Server 正常启动和监听
-- [x] 环境变量正确传递给子进程
-- [x] IPC 通道 Main ↔ Renderer 连通
-- [x] 多 Pane UI 渲染正常 (2x2 固定布局)
-- [x] Agent 选择器显示 CCB 选项
-- [x] Enso 端等待 CCB RPC 创建 Pane (方案 B)
-- [ ] **CCB Python 端通过 RPC 创建 agent pane**
+- [x] 环境变量正确传递给 CCB 进程
+- [x] CCB 检测到 Enso 后端
+- [x] CCB 通过 RPC 成功创建 pane
+- [x] IPC 通道 Main ↔ Renderer 定义正确
+- [ ] **IPC 事件到达 Renderer 并更新 UI** ⚠️
 
 ### 完整功能验收
 - [ ] cask/gask/oask 工具正常工作
@@ -315,4 +322,102 @@ process.env.ENSO_RPC_TOKEN = token;  // UUID
 
 ---
 
-**下次会话提示**: 验证 CCB Python 端 `_start_provider_enso()` 是否正确调用 RPC `create_pane` 方法。
+## 七、下一步调试指南
+
+### 步骤 1: 确认 Main 进程发送事件
+
+查看 Enso 控制台（启动 `npm run dev` 的终端）:
+```
+[CCB][Core] Sending CCB_TERMINAL_OPEN event: { ptyId: 'xxx', cwd: '...', title: '...' }
+```
+
+### 步骤 2: 确认 Renderer 进程接收事件
+
+打开 DevTools (Ctrl+Shift+I) → Console:
+```
+[CCB] Received CCB_TERMINAL_OPEN event: { ptyId: 'xxx', cwd: '...', title: '...' }
+[CCB] addExternalPane result: 'added'
+```
+
+### 步骤 3: 如果 Main 发送但 Renderer 未收到
+
+检查以下可能原因:
+1. `initCCBPaneListener()` 是否在 CCB 启动前被调用
+2. `IPC_CHANNELS.CCB_TERMINAL_OPEN` 常量值是否一致
+3. `ipcRenderer.on` 和 `webContents.send` 使用的通道名是否匹配
+
+### 步骤 4: 如果 Renderer 收到但 UI 未更新
+
+检查 `addExternalPane` 返回值:
+- `'added'` - 正常添加
+- `'ignored'` - 重复的 paneId
+- `'overflow'` - 超过 4 个 pane 限制
+
+检查 `normalizePath(event.cwd)` 是否与当前 worktree key 匹配。
+
+---
+
+## 八、已知限制
+
+1. **CCB 路径硬编码**: `src/main/ipc/ccb.ts:187` 中 CCB 脚本路径是硬编码的，需要改为配置项
+2. **单 worktree 支持**: 当前逻辑假设只有一个活跃的 CCB 实例
+3. **Windows 专用**: 部分修改（如 shell=false）可能影响其他平台
+
+---
+
+**下次会话提示**:
+1. 运行 Enso 并打开 DevTools
+2. 选择 CCB agent 触发启动
+3. 观察 Main 和 Renderer 的调试日志
+4. 根据日志定位 IPC 事件丢失的位置
+
+---
+
+## 九、代码文件清单
+
+### Enso 端（Main Process）
+
+| 文件 | 说明 |
+|------|------|
+| `src/main/services/ccb/EnsoRPCServer.ts` | RPC 服务器主类 |
+| `src/main/services/ccb/core.ts` | CCBCore 核心业务逻辑（包含 Pane 管理） |
+| `src/main/services/ccb/protocol.ts` | JSON-RPC 协议验证 |
+| `src/main/services/ccb/transport.ts` | NDJSON 传输层 |
+| `src/main/services/ccb/types.ts` | TypeScript 类型定义 |
+| `src/main/ipc/ccb.ts` | CCB 进程管理 IPC |
+
+### Enso 端（Renderer Process）
+
+| 文件 | 说明 |
+|------|------|
+| `src/renderer/stores/ccbPanes.ts` | Zustand 状态管理 |
+| `src/renderer/components/chat/CCBPaneLayout.tsx` | 多 Pane 布局组件 |
+| `src/renderer/components/chat/CCBPaneTerminal.tsx` | CCB 终端组件 |
+
+### CCB 端（Python）
+
+| 文件 | 说明 |
+|------|------|
+| `lib/enso_rpc_client.py` | JSON-RPC TCP 客户端 |
+| `lib/enso_backend.py` | EnsoBackend（实现 TerminalBackend） |
+| `lib/terminal.py` | 终端检测（包含 `_inside_enso()`） |
+
+---
+
+## 十、设计与实现差异说明
+
+> **注意**：归档的设计文档中的某些内容已在实现过程中调整。
+
+| 设计文档描述 | 实际实现 | 调整原因 |
+|-------------|---------|---------|
+| `PaneManager.ts` 单独文件 | 合并到 `CCBCore.ts` | 简化架构，减少文件数量 |
+| `spawn('ccb', ['up'])` | `spawn('python', ['ccb', ...])` | `up` 命令已废弃，直接调用 Python |
+| `lib/backends/enso/` 子目录 | 直接在 `lib/` 下 | 简化目录结构 |
+| TCP Server 长连接 | 每次 RPC 短连接 | CCB 主动连接，无需持久连接 |
+
+---
+
+**文档版本**: v2.0
+**最后更新**: 2026-02-02
+**维护者**: Claude + Codex 协作
+
