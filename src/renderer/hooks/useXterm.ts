@@ -132,6 +132,7 @@ export function useXterm({
   const ptyIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const exitCleanupRef = useRef<(() => void) | null>(null);
+  const shouldDestroyPtyOnUnmountRef = useRef(true);
   const linkProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
   const rendererAddonRef = useRef<{ dispose: () => void } | null>(null);
   const onExitRef = useRef(onExit);
@@ -266,6 +267,8 @@ export function useXterm({
 
     const attachPtyId = existingPtyId?.trim();
     const isAttachMode = Boolean(attachPtyId);
+    // Attach mode must never destroy the PTY on unmount (prevents "PTY 误杀")
+    shouldDestroyPtyOnUnmountRef.current = !isAttachMode;
     setIsLoading(!isAttachMode);
 
     const terminal = new Terminal({
@@ -618,7 +621,8 @@ export function useXterm({
     return () => {
       cleanupRef.current?.();
       exitCleanupRef.current?.();
-      if (ptyIdRef.current) {
+      // Attach mode: never destroy the PTY on unmount (prevents "PTY 误杀" when panes remount)
+      if (ptyIdRef.current && shouldDestroyPtyOnUnmountRef.current) {
         window.electronAPI.terminal.destroy(ptyIdRef.current);
       }
       // Dispose addons before terminal to prevent async callback errors
@@ -698,6 +702,15 @@ export function useXterm({
   // Fit and focus when becoming active (only after loading completes)
   useEffect(() => {
     if (isActive && terminalRef.current && !isLoading) {
+      // If this terminal is within a focus scope, only focus when it's the declared focus target.
+      const el = containerRef.current;
+      if (el) {
+        const scope = el.closest('[data-enso-xterm-focus-scope]');
+        if (scope) {
+          const isTarget = Boolean(el.closest('[data-enso-xterm-focus-target]'));
+          if (!isTarget) return;
+        }
+      }
       requestAnimationFrame(() => {
         fit();
         terminalRef.current?.focus();

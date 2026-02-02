@@ -76,6 +76,10 @@ export const IPC_CHANNELS = {
 
   // CCB
   CCB_TERMINAL_OPEN: 'ccb:terminal:open',
+  CCB_START: 'ccb:start',
+  CCB_STOP: 'ccb:stop',
+  CCB_GET_STATUS: 'ccb:getStatus',
+  CCB_STATUS_CHANGED: 'ccb:statusChanged',
 
   // Agent
   AGENT_LIST: 'agent:list',

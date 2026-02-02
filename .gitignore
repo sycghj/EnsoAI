@@ -35,5 +35,11 @@ build/cer.p12
 # CCB session files
 .ccb_config/
 
+# Claude Code local settings
+.claude/
+
+# Temp files
+ccb-*.txt
+
 # Worktree
 PROMPT.md

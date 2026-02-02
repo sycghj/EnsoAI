@@ -24,6 +24,7 @@ import {
 } from './terminal';
 import { registerUpdaterHandlers } from './updater';
 import { clearAllWorktreeServices, registerWorktreeHandlers } from './worktree';
+import { stopAllCCBProcesses } from './ccb';
 import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
 
 let ccbRpcServer: EnsoRPCServer | null = null;
@@ -59,6 +60,9 @@ export async function cleanupAllResources(): Promise<void> {
 
   // Stop all code review processes (sync, fast)
   stopAllCodeReviews();
+
+  // Stop all CCB processes (sync, fast)
+  stopAllCCBProcesses();
 
   // Stop accepting new CCB RPC requests before shutting down terminals.
   try {
@@ -115,6 +119,9 @@ export function cleanupAllResourcesSync(): void {
 
   // Kill Hapi/Cloudflared processes (sync)
   cleanupHapi();
+
+  // Stop all CCB processes (sync)
+  stopAllCCBProcesses();
 
   // Stop accepting new CCB RPC requests (sync best-effort)
   try {

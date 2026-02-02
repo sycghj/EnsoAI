@@ -297,6 +297,24 @@ const electronAPI = {
       ipcRenderer.on(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
     },
+    start: (options: {
+      cwd: string;
+      providers?: string[];
+    }): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CCB_START, options),
+    stop: (cwd: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CCB_STOP, cwd),
+    getStatus: (cwd: string): Promise<{ status: string; error: string | null }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CCB_GET_STATUS, cwd),
+    onStatusChanged: (
+      callback: (event: { cwd: string; status: string; error?: string }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        event: { cwd: string; status: string; error?: string }
+      ) => callback(event);
+      ipcRenderer.on(IPC_CHANNELS.CCB_STATUS_CHANGED, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.CCB_STATUS_CHANGED, handler);
+    },
   },
 
   // Agent

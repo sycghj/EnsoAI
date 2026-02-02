@@ -23,6 +23,7 @@ import {
   registerIpcHandlers,
   setCcbRpcServer,
 } from './ipc';
+import { registerCCBHandlers, updateCCBRpcServer, stopAllCCBProcesses } from './ipc/ccb';
 import { initClaudeProviderWatcher } from './ipc/claudeProvider';
 import { registerWindowHandlers } from './ipc/window';
 import { registerClaudeBridgeIpcHandlers } from './services/claude/ClaudeIdeBridge';
@@ -247,6 +248,9 @@ app.whenReady().then(async () => {
     ccbRpcServer = new EnsoRPCServer(mainWindow);
     setCcbRpcServer(ccbRpcServer);
 
+    // Register CCB IPC handlers for starting/stopping CCB processes
+    registerCCBHandlers(mainWindow, ccbRpcServer);
+
     ccbRpcServer.ready
       .then(() => {
         const { host, port, token } = ccbRpcServer?.getConnectionInfo() ?? {
@@ -258,6 +262,9 @@ app.whenReady().then(async () => {
         process.env.ENSO_RPC_HOST = host;
         process.env.ENSO_RPC_PORT = String(port);
         process.env.ENSO_RPC_TOKEN = token;
+
+        // Update CCB handlers with ready RPC server info
+        updateCCBRpcServer(ccbRpcServer);
 
         console.log(`[CCB][RPC] enabled at ${host}:${port}`);
       })

@@ -7,6 +7,11 @@ const MAX_PANE_SLOTS = 4;
 type WorktreeKey = string;
 
 /**
+ * CCB process status
+ */
+export type CCBStatus = 'idle' | 'starting' | 'running' | 'error';
+
+/**
  * CCB Pane information received from Main process via IPC.
  */
 export interface CCBPane {
@@ -30,6 +35,8 @@ interface WorktreeCCBState {
   panes: CCBPane[];
   layout: CCBPaneLayout;
   cwd: string | null; // original casing cwd used for PTY creation
+  ccbStatus: CCBStatus; // CCB process status
+  ccbError: string | null; // Error message if status is 'error'
 }
 
 type WorktreeStates = Record<WorktreeKey, WorktreeCCBState>;
@@ -50,6 +57,10 @@ interface CCBPanesState {
   // Actions
   addExternalPane: (event: { ptyId: string; cwd: string; title?: string }) => ExternalAddResult;
   ensureWorktreePanes: (worktreePath: string, options?: EnsureWorktreePanesOptions) => Promise<void>;
+  startCCB: (worktreePath: string) => Promise<{ success: boolean; error?: string }>;
+  stopCCB: (worktreePath: string) => Promise<void>;
+  getCCBStatus: (worktreePath: string) => CCBStatus;
+  updateCCBStatus: (cwd: string, status: CCBStatus, error?: string) => void;
   removePane: (paneId: string) => void;
   setActivePaneIndex: (worktreePath: string, index: number) => void;
   clearPanes: () => void;
@@ -86,7 +97,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
   addExternalPane: (event) => {
     const key = normalizePath(event.cwd);
 
-    const current = get().worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null };
+    const current = get().worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null, ccbStatus: 'idle', ccbError: null };
 
     // Ignore duplicates (never destroy a PTY we already track)
     if (hasPaneId(get().worktrees, event.ptyId)) return 'ignored';
@@ -97,7 +108,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
     }
 
     set((state) => {
-      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null };
+      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null, ccbStatus: 'idle', ccbError: null };
       // Re-check inside set (race-safe)
       if (hasPaneId(state.worktrees, event.ptyId)) {
         return state;
@@ -123,6 +134,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
         worktrees: {
           ...state.worktrees,
           [key]: {
+            ...prev,
             panes: nextPanes,
             layout: { activePaneIndex: slotIndex },
             cwd: prev.cwd ?? event.cwd,
@@ -156,7 +168,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
           ...state,
           worktrees: {
             ...state.worktrees,
-            [key]: { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath },
+            [key]: { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath, ccbStatus: 'idle', ccbError: null },
           },
         };
       });
@@ -170,6 +182,111 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
 
     ensureInFlightByWorktree.set(key, task);
     return task;
+  },
+
+  startCCB: async (worktreePath) => {
+    const key = normalizePath(worktreePath);
+    const current = get().worktrees[key];
+
+    // Check if already starting or running
+    if (current?.ccbStatus === 'starting' || current?.ccbStatus === 'running') {
+      return { success: true };
+    }
+
+    // Update status to starting
+    set((state) => {
+      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath, ccbStatus: 'idle', ccbError: null };
+      return {
+        ...state,
+        worktrees: {
+          ...state.worktrees,
+          [key]: { ...prev, ccbStatus: 'starting', ccbError: null, cwd: prev.cwd ?? worktreePath },
+        },
+      };
+    });
+
+    try {
+      const result = await window.electronAPI.ccb.start({ cwd: worktreePath });
+
+      if (result.success) {
+        set((state) => {
+          const prev = state.worktrees[key];
+          if (!prev) return state;
+          return {
+            ...state,
+            worktrees: {
+              ...state.worktrees,
+              [key]: { ...prev, ccbStatus: 'running', ccbError: null },
+            },
+          };
+        });
+      } else {
+        set((state) => {
+          const prev = state.worktrees[key];
+          if (!prev) return state;
+          return {
+            ...state,
+            worktrees: {
+              ...state.worktrees,
+              [key]: { ...prev, ccbStatus: 'error', ccbError: result.error ?? 'Unknown error' },
+            },
+          };
+        });
+      }
+
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      set((state) => {
+        const prev = state.worktrees[key];
+        if (!prev) return state;
+        return {
+          ...state,
+          worktrees: {
+            ...state.worktrees,
+            [key]: { ...prev, ccbStatus: 'error', ccbError: error },
+          },
+        };
+      });
+      return { success: false, error };
+    }
+  },
+
+  stopCCB: async (worktreePath) => {
+    const key = normalizePath(worktreePath);
+    await window.electronAPI.ccb.stop(worktreePath);
+
+    set((state) => {
+      const prev = state.worktrees[key];
+      if (!prev) return state;
+      return {
+        ...state,
+        worktrees: {
+          ...state.worktrees,
+          [key]: { ...prev, ccbStatus: 'idle', ccbError: null },
+        },
+      };
+    });
+  },
+
+  getCCBStatus: (worktreePath) => {
+    const key = normalizePath(worktreePath);
+    return get().worktrees[key]?.ccbStatus ?? 'idle';
+  },
+
+  updateCCBStatus: (cwd, status, error) => {
+    const key = normalizePath(cwd);
+    set((state) => {
+      const prev = state.worktrees[key];
+      if (!prev) return state;
+      return {
+        ...state,
+        worktrees: {
+          ...state.worktrees,
+          [key]: { ...prev, ccbStatus: status, ccbError: error ?? null },
+        },
+      };
+    });
   },
 
   removePane: (paneId) =>
@@ -228,11 +345,13 @@ export function initCCBPaneListener(): () => void {
   // Make init idempotent to avoid accidental double subscriptions.
   if (ccbPaneListenerCleanup) return ccbPaneListenerCleanup;
 
-  const { addExternalPane, removePane } = useCCBPanesStore.getState();
+  const { addExternalPane, removePane, updateCCBStatus } = useCCBPanesStore.getState();
 
   // Listen for new pane creation
   const unsubscribeOpen = window.electronAPI.ccb.onTerminalOpen((event) => {
+    console.log('[CCB] Received CCB_TERMINAL_OPEN event:', event);
     const result = addExternalPane(event);
+    console.log('[CCB] addExternalPane result:', result);
     if (result === 'overflow') {
       // Slots are full for this worktree: destroy the extra PTY to avoid leaks.
       void window.electronAPI.terminal.destroy(event.ptyId);
@@ -244,9 +363,15 @@ export function initCCBPaneListener(): () => void {
     removePane(event.id);
   });
 
+  // Listen for CCB status changes from main process
+  const unsubscribeStatus = window.electronAPI.ccb.onStatusChanged((event) => {
+    updateCCBStatus(event.cwd, event.status as CCBStatus, event.error);
+  });
+
   ccbPaneListenerCleanup = () => {
     unsubscribeOpen();
     unsubscribeExit();
+    unsubscribeStatus();
     ccbPaneListenerCleanup = null;
   };
 

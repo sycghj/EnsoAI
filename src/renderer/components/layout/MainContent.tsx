@@ -32,11 +32,17 @@ import { useI18n } from '@/i18n';
 import { springFast } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
-import { initCCBPaneListener, useCCBPanesStore } from '@/stores/ccbPanes';
+import { initCCBPaneListener, useCCBPanesStore, type CCBStatus } from '@/stores/ccbPanes';
 import { useSettingsStore } from '@/stores/settings';
 import { TerminalPanel } from '../terminal';
 
 type LayoutMode = 'columns' | 'tree';
+
+function getBaseAgentId(agentId: string): string {
+  if (agentId.endsWith('-hapi')) return agentId.slice(0, -5);
+  if (agentId.endsWith('-happy')) return agentId.slice(0, -6);
+  return agentId;
+}
 
 interface MainContentProps {
   activeTab: TabId;
@@ -83,9 +89,7 @@ export function MainContent({
   // Diff Review Modal state
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
-  // Subscribe to CCB panes for multi-pane display
-  const ccbPanes = useCCBPanesStore((s) => s.panes);
-  const hasCCBPanes = ccbPanes.length > 0;
+  const ensureWorktreePanes = useCCBPanesStore((s) => s.ensureWorktreePanes);
 
   // Ensure we can receive CCB_TERMINAL_OPEN even before any pane exists.
   useEffect(() => {
@@ -107,6 +111,31 @@ export function MainContent({
     const firstSession = sessions.find((s) => s.repoPath === repoPath && s.cwd === worktreePath);
     return firstSession?.id ?? null;
   }, [repoPath, worktreePath, sessions, activeIds]);
+
+  const activeSession = useMemo(() => {
+    if (!activeSessionId) return null;
+    return sessions.find((s) => s.id === activeSessionId) ?? null;
+  }, [sessions, activeSessionId]);
+
+  const isCCBAgentActive = useMemo(() => {
+    if (!activeSession) return false;
+    return getBaseAgentId(activeSession.agentId) === 'ccb';
+  }, [activeSession]);
+
+  const worktreeKey = useMemo(() => {
+    return worktreePath ? normalizePath(worktreePath) : null;
+  }, [worktreePath]);
+
+  const ccbPaneCount = useCCBPanesStore((s) =>
+    worktreeKey ? (s.worktrees[worktreeKey]?.panes.length ?? 0) : 0
+  );
+  const hasCCBPanes = ccbPaneCount > 0;
+
+  // CCB status and startCCB action
+  const startCCB = useCCBPanesStore((s) => s.startCCB);
+  const ccbStatus = useCCBPanesStore((s) =>
+    worktreeKey ? (s.worktrees[worktreeKey]?.ccbStatus ?? 'idle') : 'idle'
+  ) as CCBStatus;
 
   // Tab metadata configuration (excludes 'settings' as it's not shown in the tab bar)
   const tabConfigMap: Record<
@@ -231,6 +260,23 @@ export function MainContent({
 
   // Check if we have a currently selected worktree
   const hasActiveWorktree = Boolean(repoPath && worktreePath);
+
+  // When the active agent is CCB and the chat tab is visible, ensure we have 4 panes for this worktree.
+  // Also start CCB process if not already running.
+  useEffect(() => {
+    if (!isCCBAgentActive) return;
+    if (activeTab !== 'chat') return;
+    if (!worktreePath) return;
+
+    // Ensure worktree state is initialized
+    void ensureWorktreePanes(worktreePath, { desiredCount: 4 });
+
+    // Start CCB if not already running
+    if (ccbStatus === 'idle') {
+      console.log('[CCB] Starting CCB for worktree:', worktreePath);
+      void startCCB(worktreePath);
+    }
+  }, [isCCBAgentActive, activeTab, worktreePath, ensureWorktreePanes, ccbStatus, startCCB]);
 
   return (
     <main className={cn('flex min-w-[535px] flex-1 flex-col overflow-hidden bg-background')}>
@@ -385,42 +431,71 @@ export function MainContent({
           )}
         >
           <div className="flex h-full w-full">
-            {/* CCB panes: only render when exists */}
-            {hasCCBPanes && (
-              <div
-                className={cn(
-                  'flex-1 min-w-0',
-                  effectiveRepoPath && effectiveWorktreePath && 'border-r border-border'
-                )}
-              >
-                <CCBPaneLayout isActive={activeTab === 'chat'} />
+            {/* If the active agent is CCB, show a full-screen 2x2 CCB pane layout */}
+            {isCCBAgentActive ? (
+              <div className="flex-1 min-w-0">
+                <CCBPaneLayout isActive={activeTab === 'chat'} worktreePath={worktreePath} />
               </div>
-            )}
-
-            {/* Keep AgentPanel mounted whenever we have effective paths, even if layout changes */}
-            {effectiveRepoPath && effectiveWorktreePath ? (
-              <div
-                className={cn(
-                  'relative h-full min-w-0 min-h-0',
-                  hasCCBPanes ? 'w-[400px] shrink-0' : 'flex-1'
+            ) : (
+              <>
+                {/* CCB panes: only render when exists (side-by-side with AgentPanel for non-CCB agents) */}
+                {hasCCBPanes && (
+                  <div
+                    className={cn(
+                      'flex-1 min-w-0',
+                      effectiveRepoPath && effectiveWorktreePath && 'border-r border-border'
+                    )}
+                  >
+                    <CCBPaneLayout isActive={activeTab === 'chat'} worktreePath={worktreePath} />
+                  </div>
                 )}
-              >
-                <AgentPanel
-                  repoPath={effectiveRepoPath}
-                  cwd={effectiveWorktreePath}
-                  isActive={activeTab === 'chat' && hasActiveWorktree}
-                  onSwitchWorktree={onSwitchWorktree}
-                />
-                {!hasActiveWorktree && (
-                  <div className="absolute inset-0 z-20 flex items-center justify-center bg-background">
+
+                {/* Keep AgentPanel mounted whenever we have effective paths, even if layout changes */}
+                {effectiveRepoPath && effectiveWorktreePath ? (
+                  <div
+                    className={cn(
+                      'relative h-full min-w-0 min-h-0',
+                      hasCCBPanes ? 'w-[400px] shrink-0' : 'flex-1'
+                    )}
+                  >
+                    <AgentPanel
+                      repoPath={effectiveRepoPath}
+                      cwd={effectiveWorktreePath}
+                      isActive={activeTab === 'chat' && hasActiveWorktree}
+                      onSwitchWorktree={onSwitchWorktree}
+                    />
+                    {!hasActiveWorktree && (
+                      <div className="absolute inset-0 z-20 flex items-center justify-center bg-background">
+                        <Empty className="border-0">
+                          <EmptyMedia variant="icon">
+                            <Sparkles className="h-4.5 w-4.5" />
+                          </EmptyMedia>
+                          <EmptyHeader>
+                            <EmptyTitle>{t('Select a Worktree')}</EmptyTitle>
+                            <EmptyDescription>
+                              {t('Choose a worktree to continue using AI Agent')}
+                            </EmptyDescription>
+                          </EmptyHeader>
+                          {onExpandWorktree && worktreeCollapsed && (
+                            <Button onClick={onExpandWorktree} variant="outline" className="mt-2">
+                              <GitBranch className="mr-2 h-4 w-4" />
+                              {t('Choose Worktree')}
+                            </Button>
+                          )}
+                        </Empty>
+                      </div>
+                    )}
+                  </div>
+                ) : hasCCBPanes ? null : (
+                  <div className="h-full bg-background flex items-center justify-center">
                     <Empty className="border-0">
                       <EmptyMedia variant="icon">
                         <Sparkles className="h-4.5 w-4.5" />
                       </EmptyMedia>
                       <EmptyHeader>
-                        <EmptyTitle>{t('Select a Worktree')}</EmptyTitle>
+                        <EmptyTitle>{t('Start using AI Agent')}</EmptyTitle>
                         <EmptyDescription>
-                          {t('Choose a worktree to continue using AI Agent')}
+                          {t('Select a Worktree to start using AI coding assistant')}
                         </EmptyDescription>
                       </EmptyHeader>
                       {onExpandWorktree && worktreeCollapsed && (
@@ -432,27 +507,7 @@ export function MainContent({
                     </Empty>
                   </div>
                 )}
-              </div>
-            ) : hasCCBPanes ? null : (
-              <div className="h-full bg-background flex items-center justify-center">
-                <Empty className="border-0">
-                  <EmptyMedia variant="icon">
-                    <Sparkles className="h-4.5 w-4.5" />
-                  </EmptyMedia>
-                  <EmptyHeader>
-                    <EmptyTitle>{t('Start using AI Agent')}</EmptyTitle>
-                    <EmptyDescription>
-                      {t('Select a Worktree to start using AI coding assistant')}
-                    </EmptyDescription>
-                  </EmptyHeader>
-                  {onExpandWorktree && worktreeCollapsed && (
-                    <Button onClick={onExpandWorktree} variant="outline" className="mt-2">
-                      <GitBranch className="mr-2 h-4 w-4" />
-                      {t('Choose Worktree')}
-                    </Button>
-                  )}
-                </Empty>
-              </div>
+              </>
             )}
           </div>
         </div>

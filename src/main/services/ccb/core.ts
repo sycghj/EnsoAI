@@ -81,6 +81,7 @@ export class CCBCore {
     this.panes.set(ptyId, paneInfo);
 
     if (!this.mainWindow.isDestroyed()) {
+      console.log('[CCB][Core] Sending CCB_TERMINAL_OPEN event:', { ptyId, cwd: options.cwd, title });
       this.mainWindow.webContents.send(IPC_CHANNELS.CCB_TERMINAL_OPEN, {
         ptyId,
         cwd: options.cwd,
