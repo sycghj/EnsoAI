@@ -1,5 +1,5 @@
 import { Plus, Sparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { normalizePath, pathsEqual } from '@/App/storage';
 import { ResizeHandle } from '@/components/terminal/ResizeHandle';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,11 @@ import { useAgentSessionsStore } from '@/stores/agentSessions';
 import { initAgentStatusListener } from '@/stores/agentStatus';
 import { useCodeReviewContinueStore } from '@/stores/codeReviewContinue';
 import { BUILTIN_AGENT_IDS, useSettingsStore } from '@/stores/settings';
+import { useTerminalStore } from '@/stores/terminal';
 import { useWorktreeActivityStore } from '@/stores/worktreeActivity';
 import { AgentGroup } from './AgentGroup';
 import { AgentTerminal } from './AgentTerminal';
+import { QuickTerminalModal } from './QuickTerminalModal';
 import type { Session } from './SessionBar';
 import { StatusLine } from './StatusLine';
 import type { AgentGroupState, AgentGroup as AgentGroupType } from './types';
@@ -112,6 +114,7 @@ function createSession(
 
 export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }: AgentPanelProps) {
   const { t } = useI18n();
+  const panelRef = useRef<HTMLDivElement>(null); // 容器引用
   const {
     agentSettings,
     agentDetectionStatus,
@@ -122,12 +125,76 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
     claudeCodeIntegration,
     terminalTheme,
   } = useSettingsStore();
+  // 添加 ?? true 回退，兼容老用户可能没有 enabled 字段的情况
+  const quickTerminalEnabled = useSettingsStore((s) => s.quickTerminal.enabled ?? true);
+  const quickTerminalOpen = useSettingsStore((s) => s.quickTerminal.isOpen);
+  const setQuickTerminalOpen = useSettingsStore((s) => s.setQuickTerminalOpen);
+  const { getQuickTerminalSession, setQuickTerminalSession, removeQuickTerminalSession } =
+    useTerminalStore();
+  const currentQuickTerminalSession = getQuickTerminalSession(cwd);
+
+  // 用于强制重新创建 QuickTerminalModal 的 key
+  // 当功能被禁用再启用时递增，确保创建全新的 terminal
+  const [quickTerminalMountKey, setQuickTerminalMountKey] = useState(0);
+  const prevQuickTerminalEnabled = useRef(quickTerminalEnabled);
+  useEffect(() => {
+    if (quickTerminalEnabled && !prevQuickTerminalEnabled.current) {
+      // 功能从禁用变为启用，递增 key 强制重新创建
+      setQuickTerminalMountKey((k) => k + 1);
+    }
+    if (!quickTerminalEnabled && prevQuickTerminalEnabled.current) {
+      // 功能从启用变为禁用，清理 session
+      if (currentQuickTerminalSession) {
+        window.electronAPI.terminal.destroy(currentQuickTerminalSession).catch(console.error);
+      }
+      removeQuickTerminalSession(cwd);
+      setQuickTerminalOpen(false);
+    }
+    prevQuickTerminalEnabled.current = quickTerminalEnabled;
+  }, [
+    quickTerminalEnabled,
+    cwd,
+    currentQuickTerminalSession,
+    removeQuickTerminalSession,
+    setQuickTerminalOpen,
+  ]);
+
   const terminalBgColor = useMemo(() => {
     return getXtermTheme(terminalTheme)?.background ?? defaultDarkTheme.background;
   }, [terminalTheme]);
   const statusLineEnabled = claudeCodeIntegration.statusLineEnabled;
   const defaultAgentId = useMemo(() => getDefaultAgentId(agentSettings), [agentSettings]);
   const { setAgentCount, registerAgentCloseHandler } = useWorktreeActivityStore();
+
+  const [hasRunningProcess, setHasRunningProcess] = useState(false);
+
+  const handleToggleQuickTerminal = useCallback(() => {
+    setQuickTerminalOpen(!quickTerminalOpen);
+  }, [quickTerminalOpen, setQuickTerminalOpen]);
+
+  const handleQuickTerminalSessionInit = useCallback(
+    (sessionId: string) => {
+      // 总是更新 session，覆盖可能存在的旧记录（对应已销毁的 PTY）
+      setQuickTerminalSession(cwd, sessionId);
+    },
+    [cwd, setQuickTerminalSession]
+  );
+
+  const handleCloseQuickTerminal = useCallback(() => {
+    // 关闭 modal
+    setQuickTerminalOpen(false);
+
+    // 清除 session 记录（PTY 由 ShellTerminal 组件卸载时的 cleanup 销毁，这里不要重复调用 destroy）
+    if (currentQuickTerminalSession) {
+      removeQuickTerminalSession(cwd);
+    }
+  }, [currentQuickTerminalSession, cwd, setQuickTerminalOpen, removeQuickTerminalSession]);
+
+  // 监听终端会话状态
+  useEffect(() => {
+    // 只要有 session 存在就认为是 active（有 PTY 在运行）
+    setHasRunningProcess(!!currentQuickTerminalSession);
+  }, [currentQuickTerminalSession]);
 
   // Global session IDs to keep terminals mounted across group moves
   const [globalSessionIds, setGlobalSessionIds] = useState<Set<string>>(new Set());
@@ -996,6 +1063,22 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
     handleSelectSession,
   ]);
 
+  // Quick Terminal 快捷键监听
+  useEffect(() => {
+    if (!isActive) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+` 或 Cmd+` (Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault();
+        handleToggleQuickTerminal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isActive, handleToggleQuickTerminal]);
+
   if (!cwd) return null;
 
   // Check if current worktree has any groups (used for empty state detection)
@@ -1035,7 +1118,11 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
   const currentGroupPositions = getGroupPositions(currentGroupState);
 
   return (
-    <div className="relative h-full w-full" style={{ backgroundColor: terminalBgColor }}>
+    <div
+      ref={panelRef}
+      className="relative h-full w-full"
+      style={{ backgroundColor: terminalBgColor }}
+    >
       {/* Empty state overlay - shown when current worktree has no sessions */}
       {/* IMPORTANT: Don't use early return here - terminals must stay mounted to prevent PTY destruction */}
       {showEmptyState && (
@@ -1252,6 +1339,9 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
               onSessionRename={handleRenameSession}
               onSessionReorder={(from, to) => handleReorderSessions(group.id, from, to)}
               onGroupClick={() => handleGroupClick(group.id)}
+              quickTerminalOpen={quickTerminalOpen}
+              quickTerminalHasProcess={hasRunningProcess}
+              onToggleQuickTerminal={quickTerminalEnabled ? handleToggleQuickTerminal : undefined}
             />
             {/* Status Line at bottom of each group - only render container when enabled */}
             {statusLineEnabled && (
@@ -1265,6 +1355,17 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
           </div>
         );
       })}
+      {/* Quick Terminal Modal - 始终挂载以保持 terminal 运行状态 */}
+      {quickTerminalEnabled && (
+        <QuickTerminalModal
+          key={`quick-terminal-${quickTerminalMountKey}`}
+          open={quickTerminalOpen && isActive}
+          onOpenChange={setQuickTerminalOpen}
+          onClose={handleCloseQuickTerminal}
+          cwd={cwd}
+          onSessionInit={handleQuickTerminalSessionInit}
+        />
+      )}
     </div>
   );
 }

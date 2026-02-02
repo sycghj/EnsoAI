@@ -169,7 +169,26 @@ export function parseClaudeJsonOutput(stdout: string): ParsedCLIResult {
   try {
     let jsonStr = stripAnsi(stdout).trim();
 
-    // Try to find the first complete JSON object
+    // Claude CLI 2.1.20 及更早版本输出 JSON 数组: [{init}, {assistant}, {result}]
+    // Claude CLI 2.1.22+ 输出单个 JSON 对象: {result}
+    if (jsonStr.startsWith('[')) {
+      const arrayStart = jsonStr.indexOf('[');
+      const arrayEnd = jsonStr.lastIndexOf(']');
+      if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+        const arr = JSON.parse(jsonStr.slice(arrayStart, arrayEnd + 1));
+        const resultObj = arr.find(
+          (item: { type?: string; subtype?: string }) =>
+            item.type === 'result' && item.subtype === 'success'
+        );
+        if (resultObj?.result) {
+          return { success: true, text: resultObj.result };
+        }
+        const errorObj = arr.find((item: { type?: string }) => item.type === 'result');
+        return { success: false, error: errorObj?.error || 'Unknown error' };
+      }
+    }
+
+    // 单个 JSON 对象格式 (Claude CLI 2.1.22+)
     const jsonStart = jsonStr.indexOf('{');
     const jsonEnd = jsonStr.lastIndexOf('}');
 

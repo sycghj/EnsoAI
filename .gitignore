@@ -43,3 +43,7 @@ ccb-*.txt
 
 # Worktree
 PROMPT.md
+
+# Other
+.omc/
+.worktrees

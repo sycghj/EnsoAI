@@ -24,6 +24,11 @@ import {
 import { toastManager } from '@/components/ui/toast';
 import { useDetectedApps, useOpenWith } from '@/hooks/useAppDetector';
 import { useI18n } from '@/i18n';
+import {
+  clearClaudeProviderSwitch,
+  isClaudeProviderMatch,
+  markClaudeProviderSwitch,
+} from '@/lib/claudeProvider';
 import { cn } from '@/lib/utils';
 import { type TerminalKeybinding, useSettingsStore } from '@/stores/settings';
 
@@ -220,24 +225,27 @@ export function ActionPanel({
   });
 
   const activeProvider = React.useMemo(() => {
-    const env = claudeData?.settings?.env;
-    if (!env) return null;
-    return (
-      providers.find(
-        (p) => p.baseUrl === env.ANTHROPIC_BASE_URL && p.authToken === env.ANTHROPIC_AUTH_TOKEN
-      ) ?? null
-    );
-  }, [providers, claudeData?.settings]);
+    const currentConfig = claudeData?.extracted;
+    if (!currentConfig) return null;
+    return providers.find((p) => isClaudeProviderMatch(p, currentConfig)) ?? null;
+  }, [providers, claudeData?.extracted]);
 
   const applyProvider = useMutation({
     mutationFn: (provider: ClaudeProvider) => window.electronAPI.claudeProvider.apply(provider),
-    onSuccess: (_, provider) => {
+    onSuccess: (success, provider) => {
+      if (!success) {
+        clearClaudeProviderSwitch();
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['claude-settings'] });
       toastManager.add({
         type: 'success',
         title: t('Provider switched'),
         description: provider.name,
       });
+    },
+    onError: () => {
+      clearClaudeProviderSwitch();
     },
   });
 
@@ -254,6 +262,7 @@ export function ActionPanel({
           icon: activeProvider?.id === provider.id ? CheckCircle : Circle,
           action: () => {
             if (activeProvider?.id !== provider.id) {
+              markClaudeProviderSwitch(provider);
               applyProvider.mutate(provider);
             }
           },

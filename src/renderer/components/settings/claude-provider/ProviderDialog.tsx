@@ -61,11 +61,13 @@ export function ProviderDialog({
         setDefaultOpusModel(provider.defaultOpusModel ?? '');
         setDefaultHaikuModel(provider.defaultHaikuModel ?? '');
       } else if (initialValues) {
+        // 从当前配置保存时，忽略 model 和 smallFastModel 字段
+        // 这些字段仅在用户手动添加配置时才设置
         setName('');
         setBaseUrl(initialValues.baseUrl ?? '');
         setAuthToken(initialValues.authToken ?? '');
-        setModel(initialValues.model ?? '');
-        setSmallFastModel(initialValues.smallFastModel ?? '');
+        setModel('');
+        setSmallFastModel('');
         setDefaultSonnetModel(initialValues.defaultSonnetModel ?? '');
         setDefaultOpusModel(initialValues.defaultOpusModel ?? '');
         setDefaultHaikuModel(initialValues.defaultHaikuModel ?? '');
@@ -89,6 +91,7 @@ export function ProviderDialog({
 
     const providerData: ClaudeProvider = {
       id: provider?.id ?? crypto.randomUUID(),
+      ...(provider && { enabled: provider.enabled, displayOrder: provider.displayOrder }),
       name: name.trim(),
       baseUrl: baseUrl.trim(),
       authToken: authToken.trim(),
@@ -112,7 +115,7 @@ export function ProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogPopup>
+      <DialogPopup zIndexLevel="nested">
         <DialogHeader>
           <DialogTitle>{isEditing ? t('Edit Provider') : t('Add Provider')}</DialogTitle>
           <DialogDescription>{t('Configure Claude API provider settings')}</DialogDescription>

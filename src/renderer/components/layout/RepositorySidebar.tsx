@@ -1,13 +1,5 @@
 import { LayoutGroup, motion } from 'framer-motion';
-import {
-  FolderGit2,
-  FolderMinus,
-  PanelLeftClose,
-  Plus,
-  Search,
-  Settings,
-  Settings2,
-} from 'lucide-react';
+import { FolderGit2, FolderMinus, PanelLeftClose, Plus, Search, Settings2 } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ALL_GROUP_ID, type RepositoryGroup, type TabId } from '@/App/constants';
 import {
@@ -78,9 +70,9 @@ export function RepositorySidebar({
   onAddRepository,
   onRemoveRepository,
   onReorderRepositories,
-  onOpenSettings,
-  isSettingsActive,
-  onToggleSettings,
+  onOpenSettings: _onOpenSettings,
+  isSettingsActive: _isSettingsActive,
+  onToggleSettings: _onToggleSettings,
   collapsed: _collapsed = false,
   onCollapse,
   groups,
@@ -94,7 +86,7 @@ export function RepositorySidebar({
   onSwitchWorktreeByPath,
 }: RepositorySidebarProps) {
   const { t, tNode } = useI18n();
-  const settingsDisplayMode = useSettingsStore((s) => s.settingsDisplayMode);
+  const _settingsDisplayMode = useSettingsStore((s) => s.settingsDisplayMode);
   const [searchQuery, setSearchQuery] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
@@ -283,7 +275,14 @@ export function RepositorySidebar({
                 {t('Add a Git repository from a local folder to get started')}
               </EmptyDescription>
             </EmptyHeader>
-            <Button onClick={onAddRepository} variant="outline" className="mt-2">
+            <Button
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onAddRepository();
+              }}
+              variant="outline"
+              className="mt-2"
+            >
               <Plus className="mr-2 h-4 w-4" />
               {t('Add Repository')}
             </Button>
@@ -329,7 +328,7 @@ export function RepositorySidebar({
                           transition={springFast}
                         />
                       )}
-                      {/* Repo name */}
+                      {/* Repo name + Tag + Settings */}
                       <div className="relative z-10 flex w-full items-center gap-2">
                         <FolderGit2
                           className={cn(
@@ -338,25 +337,11 @@ export function RepositorySidebar({
                           )}
                         />
                         <span className="truncate font-medium flex-1">{repo.name}</span>
-                        <button
-                          type="button"
-                          className="shrink-0 p-1 rounded hover:bg-muted"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRepoSettingsTarget(repo);
-                            setRepoSettingsOpen(true);
-                          }}
-                          title={t('Repository Settings')}
-                        >
-                          <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-                        </button>
-                      </div>
 
-                      {/* Tags (Group) */}
-                      {group && (
-                        <div className="relative z-10 flex w-full items-center gap-1 pl-6">
+                        {/* Group Tag - 移到这里 */}
+                        {group && (
                           <span
-                            className="inline-flex h-5 max-w-full items-center gap-1 rounded-md border px-1.5 text-[10px] text-foreground/80"
+                            className="shrink-0 inline-flex h-5 items-center gap-1 rounded-md border px-1.5 text-[10px] text-foreground/80"
                             style={{
                               backgroundColor: tagBg ?? undefined,
                               borderColor: tagBorder ?? undefined,
@@ -366,10 +351,33 @@ export function RepositorySidebar({
                             {group.emoji && (
                               <span className="text-[0.9em] opacity-90">{group.emoji}</span>
                             )}
-                            <span className="truncate">{group.name}</span>
+                            <span className="truncate max-w-[60px]">{group.name}</span>
                           </span>
+                        )}
+
+                        {/* Repository Settings */}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="shrink-0 p-1 rounded hover:bg-muted cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRepoSettingsTarget(repo);
+                            setRepoSettingsOpen(true);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setRepoSettingsTarget(repo);
+                              setRepoSettingsOpen(true);
+                            }
+                          }}
+                          title={t('Repository Settings')}
+                        >
+                          <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
-                      )}
+                      </div>
                       {/* Path */}
                       <div
                         className={cn(
@@ -401,22 +409,13 @@ export function RepositorySidebar({
           <button
             type="button"
             className="flex h-8 flex-1 items-center justify-start gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-            onClick={onAddRepository}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onAddRepository();
+            }}
           >
             <Plus className="h-4 w-4" />
             {t('Add Repository')}
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'flex h-8 w-8 items-center justify-center rounded-md transition-colors',
-              settingsDisplayMode === 'tab' && isSettingsActive
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-            )}
-            onClick={onToggleSettings || onOpenSettings}
-          >
-            <Settings className="h-4 w-4" />
           </button>
         </div>
       </div>

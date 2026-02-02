@@ -7,6 +7,7 @@ import type {
 } from '@shared/types';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { consumeClaudeProviderSwitch, isClaudeProviderMatch } from '@/lib/claudeProvider';
 import { normalizeHexColor } from '@/lib/colors';
 import {
   ALL_GROUP_ID,
@@ -60,7 +61,7 @@ import {
 import { addToast, toastManager } from './components/ui/toast';
 import { MergeEditor, MergeWorktreeDialog } from './components/worktree';
 import { useEditor } from './hooks/useEditor';
-import { useGitBranches, useGitInit } from './hooks/useGit';
+import { useAutoFetchListener, useGitBranches, useGitInit } from './hooks/useGit';
 import {
   useWorktreeCreate,
   useWorktreeList,
@@ -86,6 +87,10 @@ initCloneProgressListener();
 
 export default function App() {
   const { t } = useI18n();
+
+  // Listen for auto-fetch completion events to refresh git status
+  useAutoFetchListener();
+
   // Per-worktree tab state: { [worktreePath]: TabId }
   const [worktreeTabMap, setWorktreeTabMap] = useState<Record<string, TabId>>(getStoredTabMap);
   // Per-repo worktree state: { [repoPath]: worktreePath }
@@ -118,8 +123,6 @@ export default function App() {
   // Ref for cross-repo worktree switching (defined later)
   const switchWorktreePathRef = useRef<((path: string) => void) | null>(null);
 
-  // Settings dialog state
-  const [settingsOpen, setSettingsOpen] = useState(false);
   // Settings page state (used in MainContent)
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>(() => {
     try {
@@ -142,6 +145,9 @@ export default function App() {
     }
   });
   const [scrollToProvider, setScrollToProvider] = useState(false);
+  const [pendingProviderAction, setPendingProviderAction] = useState<'preview' | 'save' | null>(
+    null
+  );
 
   // 持久化状态变更
   useEffect(() => {
@@ -199,6 +205,17 @@ export default function App() {
   // Navigation store for terminal -> editor file navigation
   const { pendingNavigation, clearNavigation } = useNavigationStore();
   const { navigateToFile } = useEditor();
+
+  const openSettings = useCallback(() => {
+    if (settingsDisplayMode === 'tab') {
+      if (activeTab !== 'settings') {
+        setPreviousTab(activeTab);
+        setActiveTab('settings');
+      }
+    } else {
+      setSettingsDialogOpen(true);
+    }
+  }, [settingsDisplayMode, activeTab]);
 
   // Toggle settings page
   const toggleSettings = useCallback(() => {
@@ -272,6 +289,20 @@ export default function App() {
     }
   }, [settingsDisplayMode]);
 
+  // Listen for 'open-settings-provider' event from SessionBar
+  useEffect(() => {
+    const handleOpenSettingsProvider = () => {
+      setSettingsCategory('integration');
+      setScrollToProvider(true);
+      openSettings();
+    };
+
+    window.addEventListener('open-settings-provider', handleOpenSettingsProvider);
+    return () => {
+      window.removeEventListener('open-settings-provider', handleOpenSettingsProvider);
+    };
+  }, [openSettings]);
+
   // Keyboard shortcuts
   useAppKeyboardShortcuts({
     activeWorktreePath: activeWorktree?.path,
@@ -340,7 +371,7 @@ export default function App() {
     const cleanup = window.electronAPI.menu.onAction((action) => {
       switch (action) {
         case 'open-settings':
-          toggleSettings();
+          openSettings();
           break;
         case 'open-action-panel':
           setActionPanelOpen(true);
@@ -348,7 +379,7 @@ export default function App() {
       }
     });
     return cleanup;
-  }, [toggleSettings]);
+  }, [openSettings]);
 
   // Listen for close request from main process (native dialogs are shown in main)
   useEffect(() => {
@@ -409,15 +440,17 @@ export default function App() {
       const { extracted } = data;
       if (!extracted?.baseUrl) return;
 
+      if (consumeClaudeProviderSwitch(extracted)) {
+        return;
+      }
+
       // Close previous provider toast if exists
       if (providerToastRef.current) {
         toastManager.close(providerToastRef.current);
       }
 
       // Check if the new config matches any saved provider
-      const matched = claudeProviders.find(
-        (p) => p.baseUrl === extracted.baseUrl && p.authToken === extracted.authToken
-      );
+      const matched = claudeProviders.find((p) => isClaudeProviderMatch(p, extracted));
 
       if (matched) {
         // Switched to a known provider
@@ -432,14 +465,36 @@ export default function App() {
           type: 'info',
           title: t('New provider detected'),
           description: t('Click to save this config'),
-          actionProps: {
-            children: t('Open Settings'),
-            onClick: () => {
-              setSettingsCategory('integration');
-              setScrollToProvider(true);
-              toggleSettings();
+          actions: [
+            {
+              label: t('Preview'),
+              onClick: () => {
+                setSettingsCategory('integration');
+                setScrollToProvider(true);
+                openSettings();
+                setPendingProviderAction('preview');
+              },
+              variant: 'ghost',
             },
-          },
+            {
+              label: t('Save'),
+              onClick: () => {
+                setSettingsCategory('integration');
+                setScrollToProvider(true);
+                openSettings();
+                setPendingProviderAction('save');
+              },
+              variant: 'outline',
+            },
+            {
+              label: t('Open Settings'),
+              onClick: () => {
+                setSettingsCategory('integration');
+                setScrollToProvider(true);
+                openSettings();
+              },
+            },
+          ],
         });
       }
     });
@@ -452,7 +507,7 @@ export default function App() {
       }
       cleanup();
     };
-  }, [claudeProviders, t, toggleSettings]);
+  }, [claudeProviders, t, openSettings]);
 
   // Save collapsed states to localStorage
   useEffect(() => {
@@ -1154,10 +1209,27 @@ export default function App() {
     return window.electronAPI.worktree.getConflictContent(selectedRepo, file);
   };
 
+  useEffect(() => {
+    const isSettingsOpen =
+      (settingsDisplayMode === 'tab' && activeTab === 'settings') ||
+      (settingsDisplayMode === 'draggable-modal' && settingsDialogOpen);
+
+    if (!isSettingsOpen) return;
+    if (!pendingProviderAction) return;
+
+    const eventName =
+      pendingProviderAction === 'preview'
+        ? 'open-settings-provider-preview'
+        : 'open-settings-provider-save';
+
+    window.dispatchEvent(new CustomEvent(eventName));
+    setPendingProviderAction(null);
+  }, [settingsDisplayMode, settingsDialogOpen, activeTab, pendingProviderAction]);
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Custom Title Bar for Windows/Linux */}
-      <WindowTitleBar onOpenSettings={toggleSettings} />
+      <WindowTitleBar onOpenSettings={openSettings} />
 
       {/* Main Layout */}
       <div className={`flex flex-1 overflow-hidden ${resizing ? 'select-none' : ''}`}>
@@ -1196,7 +1268,7 @@ export default function App() {
                     refetchBranches();
                   }}
                   onInitGit={handleInitGit}
-                  onOpenSettings={toggleSettings}
+                  onOpenSettings={openSettings}
                   collapsed={false}
                   onCollapse={() => setRepositoryCollapsed(true)}
                   groups={sortedGroups}
@@ -1241,7 +1313,7 @@ export default function App() {
                     onAddRepository={handleAddRepository}
                     onRemoveRepository={handleRemoveRepository}
                     onReorderRepositories={handleReorderRepositories}
-                    onOpenSettings={toggleSettings}
+                    onOpenSettings={openSettings}
                     collapsed={false}
                     onCollapse={() => setRepositoryCollapsed(true)}
                     groups={sortedGroups}
@@ -1330,10 +1402,14 @@ export default function App() {
           }
           onSwitchWorktree={handleSwitchWorktreePath}
           onSwitchTab={handleTabChange}
-          isSettingsActive={settingsDisplayMode === 'tab' && activeTab === 'settings'}
+          isSettingsActive={
+            (settingsDisplayMode === 'tab' && activeTab === 'settings') ||
+            (settingsDisplayMode === 'draggable-modal' && settingsDialogOpen)
+          }
           settingsCategory={settingsCategory}
           onCategoryChange={handleSettingsCategoryChange}
           scrollToProvider={scrollToProvider}
+          onToggleSettings={toggleSettings}
         />
 
         {/* Add Repository Dialog */}
@@ -1360,7 +1436,7 @@ export default function App() {
           activeWorktreePath={activeWorktree?.path}
           onToggleRepository={() => setRepositoryCollapsed((prev) => !prev)}
           onToggleWorktree={() => setWorktreeCollapsed((prev) => !prev)}
-          onOpenSettings={toggleSettings}
+          onOpenSettings={openSettings}
           onSwitchRepo={handleSelectRepo}
           onSwitchWorktree={handleSelectWorktree}
         />

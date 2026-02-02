@@ -113,7 +113,7 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
     null
   );
   const [monacoInstance, setMonacoInstance] = useState<Monaco | null>(null);
-  const { terminalTheme, editorSettings } = useSettingsStore();
+  const { terminalTheme, editorSettings, claudeCodeIntegration } = useSettingsStore();
   const write = useTerminalWriteStore((state) => state.write);
   const focus = useTerminalWriteStore((state) => state.focus);
 
@@ -136,6 +136,7 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
   const isSyncingScrollRef = useRef(false); // Prevent scroll loop
   const setCurrentCursorLine = useEditorStore((state) => state.setCurrentCursorLine);
   const themeDefinedRef = useRef(false);
+  const selectionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selectionWidgetRef = useRef<monaco.editor.IContentWidget | null>(null);
   const widgetRootRef = useRef<Root | null>(null);
   const widgetPositionRef = useRef<monaco.IPosition | null>(null);
@@ -588,11 +589,40 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
           widgetPositionRef.current = null;
         }
       }
+
+      // Send selection_changed notification to Claude Code (debounced)
+      if (claudeCodeIntegration.enabled) {
+        if (selectionDebounceRef.current) {
+          clearTimeout(selectionDebounceRef.current);
+        }
+        selectionDebounceRef.current = setTimeout(() => {
+          window.electronAPI.mcp.sendSelectionChanged({
+            text: selectedText,
+            filePath: activeTabPath,
+            fileUrl: `file://${activeTabPath}`,
+            selection: {
+              start: {
+                line: selection.startLineNumber,
+                character: selection.startColumn,
+              },
+              end: {
+                line: selection.endLineNumber,
+                character: selection.endColumn,
+              },
+              isEmpty: selection.isEmpty(),
+            },
+          });
+        }, claudeCodeIntegration.selectionChangedDebounce);
+      }
     });
 
     return () => {
       cursorDisposable.dispose();
       selectionDisposable.dispose();
+      if (selectionDebounceRef.current) {
+        clearTimeout(selectionDebounceRef.current);
+        selectionDebounceRef.current = null;
+      }
       const currentEditor = editorRef.current;
       if (selectionWidgetRef.current && currentEditor) {
         try {
@@ -618,7 +648,18 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
         commentWidgetRoot.unmount();
       }
     };
-  }, [editorReady, sessionId, activeTabPath, rootPath, t, setCurrentCursorLine, write, focus]);
+  }, [
+    editorReady,
+    sessionId,
+    activeTabPath,
+    rootPath,
+    t,
+    setCurrentCursorLine,
+    write,
+    focus,
+    claudeCodeIntegration.enabled,
+    claudeCodeIntegration.selectionChangedDebounce,
+  ]);
 
   const handleEditorChange = useCallback(
     (value: string | undefined) => {

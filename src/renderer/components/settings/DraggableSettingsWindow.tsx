@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useI18n } from '@/i18n';
 import { scaleInVariants, springFast } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/lib/z-index';
 import { useSettingsStore } from '@/stores/settings';
 import type { SettingsCategory } from './constants';
 import { SettingsContent } from './SettingsContent';
@@ -32,41 +33,50 @@ export function DraggableSettingsWindow({
   // 拖动状态
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState(savedPosition || { x: 0, y: 0 });
-  const dragStartPos = useRef({ x: 0, y: 0 });
+  const dragStartPos = useRef<{ x: number; y: number; lastX?: number; lastY?: number }>({
+    x: 0,
+    y: 0,
+  });
   const windowRef = useRef<HTMLDivElement>(null);
 
   // 窗口尺寸常量
   const WINDOW_WIDTH = 896; // max-w-4xl
   const WINDOW_HEIGHT = 600;
-  const Z_INDEX = 100; // 高于其他模态窗口
+
+  // macOS traffic lights 安全边距（避免标题栏被遮挡）
+  const isMac = window.electronAPI.env.platform === 'darwin';
+  const MAC_SAFE_MARGIN_X = 0; // 左侧不限制
+  const MAC_SAFE_MARGIN_Y = 50; // traffic lights 高度 + 缓冲
 
   // 居中计算和位置验证
   useEffect(() => {
     if (!open) return;
 
-    const centerX = (window.innerWidth - WINDOW_WIDTH) / 2;
-    const centerY = (window.innerHeight - WINDOW_HEIGHT) / 2;
+    const minX = isMac ? MAC_SAFE_MARGIN_X : 0;
+    const minY = isMac ? MAC_SAFE_MARGIN_Y : 0;
+    const centerX = Math.max(minX, (window.innerWidth - WINDOW_WIDTH) / 2);
+    const centerY = Math.max(minY, (window.innerHeight - WINDOW_HEIGHT) / 2);
 
     if (!savedPosition) {
       // 首次打开：居中
       setPosition({ x: centerX, y: centerY });
     } else {
-      // 验证保存的位置是否在屏幕内
+      // 验证保存的位置是否在安全区域内
       const isOutOfBounds =
-        savedPosition.x < 0 ||
-        savedPosition.y < 0 ||
+        savedPosition.x < minX ||
+        savedPosition.y < minY ||
         savedPosition.x + WINDOW_WIDTH > window.innerWidth ||
         savedPosition.y + WINDOW_HEIGHT > window.innerHeight;
 
       if (isOutOfBounds) {
-        // 位置超出屏幕：重置为居中
+        // 位置超出安全区域：重置为居中
         setPosition({ x: centerX, y: centerY });
         setSettingsModalPosition({ x: centerX, y: centerY });
       } else {
         setPosition(savedPosition);
       }
     }
-  }, [open, savedPosition, setSettingsModalPosition]);
+  }, [open, savedPosition, setSettingsModalPosition, isMac]);
 
   // ESC 键关闭
   useEffect(() => {
@@ -82,7 +92,7 @@ export function DraggableSettingsWindow({
     return () => document.removeEventListener('keydown', handleEscape);
   }, [open, onOpenChange]);
 
-  // 拖动逻辑
+  // 拖动逻辑 - 使用原生 DOM 操作避免 React 重渲染导致的延迟
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if ((e.target as HTMLElement).closest('.no-drag')) return;
@@ -95,39 +105,46 @@ export function DraggableSettingsWindow({
     [position]
   );
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging) return;
+  useEffect(() => {
+    if (!isDragging) return;
 
+    const minX = isMac ? MAC_SAFE_MARGIN_X : 0;
+    const minY = isMac ? MAC_SAFE_MARGIN_Y : 0;
+
+    const handleMouseMove = (e: MouseEvent) => {
       let newX = e.clientX - dragStartPos.current.x;
       let newY = e.clientY - dragStartPos.current.y;
 
       // 边界限制（防止拖出屏幕）
-      newX = Math.max(0, Math.min(newX, window.innerWidth - WINDOW_WIDTH));
-      newY = Math.max(0, Math.min(newY, window.innerHeight - WINDOW_HEIGHT));
+      newX = Math.max(minX, Math.min(newX, window.innerWidth - WINDOW_WIDTH));
+      newY = Math.max(minY, Math.min(newY, window.innerHeight - WINDOW_HEIGHT));
 
-      setPosition({ x: newX, y: newY });
-    },
-    [isDragging]
-  );
+      // 直接操作 DOM，避免 React 状态更新导致的重渲染延迟
+      if (windowRef.current) {
+        windowRef.current.style.left = `${newX}px`;
+        windowRef.current.style.top = `${newY}px`;
+      }
+      // 保存最新位置用于 mouseup 时同步到 state
+      dragStartPos.current.lastX = newX;
+      dragStartPos.current.lastY = newY;
+    };
 
-  const handleMouseUp = useCallback(() => {
-    if (isDragging) {
+    const handleMouseUp = () => {
       setIsDragging(false);
-      setSettingsModalPosition(position);
-    }
-  }, [isDragging, position, setSettingsModalPosition]);
+      // 同步最终位置到 React state
+      const finalX = dragStartPos.current.lastX ?? position.x;
+      const finalY = dragStartPos.current.lastY ?? position.y;
+      setPosition({ x: finalX, y: finalY });
+      setSettingsModalPosition({ x: finalX, y: finalY });
+    };
 
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp]);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, isMac, position.x, position.y, setSettingsModalPosition]);
 
   if (!open) return null;
 
@@ -142,15 +159,20 @@ export function DraggableSettingsWindow({
             initial="initial"
             animate="animate"
             exit="exit"
-            transition={springFast}
+            transition={isDragging ? { duration: 0 } : springFast}
             className="fixed flex flex-col rounded-2xl border bg-popover shadow-lg"
-            style={{
-              left: `${position.x}px`,
-              top: `${position.y}px`,
-              width: `${WINDOW_WIDTH}px`,
-              height: `${WINDOW_HEIGHT}px`,
-              zIndex: Z_INDEX,
-            }}
+            style={
+              {
+                // 使用 left/top 而非 transform，避免与 framer-motion 动画冲突
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+                width: `${WINDOW_WIDTH}px`,
+                height: `${WINDOW_HEIGHT}px`,
+                zIndex: Z_INDEX.SETTINGS_WINDOW,
+                // 阻止主窗口 drag-region 穿透
+                WebkitAppRegion: 'no-drag',
+              } as React.CSSProperties
+            }
           >
             {/* 可拖动标题栏 */}
             <div
@@ -167,10 +189,10 @@ export function DraggableSettingsWindow({
                   type="button"
                   onClick={() => setSettingsDisplayMode('tab')}
                   className="flex h-6 items-center gap-1 rounded px-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                  title="将设置窗口切换为 TAB 标签页模式"
+                  title={t('Switch to TAB mode')}
                 >
                   <LayoutGrid className="h-3 w-3" />
-                  切换为 TAB 模式
+                  {t('Switch to TAB mode')}
                 </button>
                 <button
                   type="button"

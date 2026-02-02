@@ -152,6 +152,15 @@ export const BUILTIN_AGENT_IDS: BuiltinAgentId[] = [
   'ccb',
 ];
 
+// Quick Terminal settings
+export interface QuickTerminalSettings {
+  enabled: boolean;
+  buttonPosition: { x: number; y: number } | null;
+  modalPosition: { x: number; y: number } | null;
+  modalSize: { width: number; height: number } | null;
+  isOpen: boolean;
+}
+
 // Keybinding definition
 export interface TerminalKeybinding {
   key: string;
@@ -246,6 +255,7 @@ export interface ClaudeCodeIntegrationSettings {
   statusLineEnabled: boolean; // Enable Status Line hook for displaying agent status
   statusLineFields: StatusLineFieldSettings; // Which fields to display in status line
   showProviderSwitcher: boolean; // Show provider switcher in SessionBar
+  enableProviderDisableFeature: boolean; // Enable/disable the provider temporary disable feature
   providers: import('@shared/types').ClaudeProvider[];
 }
 
@@ -257,6 +267,7 @@ export const defaultClaudeCodeIntegrationSettings: ClaudeCodeIntegrationSettings
   statusLineEnabled: false, // Disable Status Line hook by default
   statusLineFields: defaultStatusLineFieldSettings,
   showProviderSwitcher: true,
+  enableProviderDisableFeature: false,
   providers: [],
 };
 
@@ -527,6 +538,10 @@ interface SettingsState {
   // Settings display mode
   settingsDisplayMode: SettingsDisplayMode;
   settingsModalPosition: { x: number; y: number } | null;
+  // Terminal theme favorites
+  favoriteTerminalThemes: string[];
+  // Quick Terminal settings
+  quickTerminal: QuickTerminalSettings;
 
   setTheme: (theme: Theme) => void;
   setLayoutMode: (mode: LayoutMode) => void;
@@ -570,6 +585,9 @@ interface SettingsState {
     updates: Partial<import('@shared/types').ClaudeProvider>
   ) => void;
   removeClaudeProvider: (id: string) => void;
+  reorderClaudeProviders: (fromIndex: number, toIndex: number) => void;
+  setClaudeProviderEnabled: (id: string, enabled: boolean) => void;
+  setClaudeProviderOrder: (providers: import('@shared/types').ClaudeProvider[]) => void;
   setCommitMessageGenerator: (settings: Partial<CommitMessageGeneratorSettings>) => void;
   setCodeReview: (settings: Partial<CodeReviewSettings>) => void;
   setAutoUpdateEnabled: (enabled: boolean) => void;
@@ -594,6 +612,16 @@ interface SettingsState {
   // Settings display mode
   setSettingsDisplayMode: (mode: SettingsDisplayMode) => void;
   setSettingsModalPosition: (position: { x: number; y: number } | null) => void;
+  // Terminal theme favorites
+  addFavoriteTerminalTheme: (theme: string) => void;
+  removeFavoriteTerminalTheme: (theme: string) => void;
+  toggleFavoriteTerminalTheme: (theme: string) => void;
+  // Quick Terminal methods
+  setQuickTerminalEnabled: (enabled: boolean) => void;
+  setQuickTerminalButtonPosition: (position: { x: number; y: number } | null) => void;
+  setQuickTerminalModalPosition: (position: { x: number; y: number } | null) => void;
+  setQuickTerminalModalSize: (size: { width: number; height: number } | null) => void;
+  setQuickTerminalOpen: (open: boolean) => void;
 }
 
 const defaultAgentSettings: AgentSettings = {
@@ -661,6 +689,16 @@ export const useSettingsStore = create<SettingsState>()(
       // Settings display mode
       settingsDisplayMode: 'tab', // 默认使用 Tab 模式（保持向后兼容）
       settingsModalPosition: null, // 首次打开居中
+      // Terminal theme favorites
+      favoriteTerminalThemes: [],
+      // Quick Terminal defaults
+      quickTerminal: {
+        enabled: true,
+        buttonPosition: null,
+        modalPosition: null,
+        modalSize: null,
+        isOpen: false,
+      },
 
       setTheme: (theme) => {
         const terminalTheme = get().terminalTheme;
@@ -821,6 +859,36 @@ export const useSettingsStore = create<SettingsState>()(
             providers: state.claudeCodeIntegration.providers.filter((p) => p.id !== id),
           },
         })),
+      reorderClaudeProviders: (fromIndex, toIndex) =>
+        set((state) => {
+          const providers = [...state.claudeCodeIntegration.providers];
+          const [removed] = providers.splice(fromIndex, 1);
+          providers.splice(toIndex, 0, removed);
+          // 更新 displayOrder
+          const reordered = providers.map((p, index) => ({ ...p, displayOrder: index }));
+          return {
+            claudeCodeIntegration: {
+              ...state.claudeCodeIntegration,
+              providers: reordered,
+            },
+          };
+        }),
+      setClaudeProviderOrder: (providers) =>
+        set((state) => ({
+          claudeCodeIntegration: {
+            ...state.claudeCodeIntegration,
+            providers: providers.map((p, index) => ({ ...p, displayOrder: index })),
+          },
+        })),
+      setClaudeProviderEnabled: (id, enabled) =>
+        set((state) => ({
+          claudeCodeIntegration: {
+            ...state.claudeCodeIntegration,
+            providers: state.claudeCodeIntegration.providers.map((p) =>
+              p.id === id ? { ...p, enabled } : p
+            ),
+          },
+        })),
       setCommitMessageGenerator: (settings) =>
         set((state) => ({
           commitMessageGenerator: { ...state.commitMessageGenerator, ...settings },
@@ -904,6 +972,44 @@ export const useSettingsStore = create<SettingsState>()(
       setSettingsModalPosition: (position) => {
         set({ settingsModalPosition: position });
       },
+      // Terminal theme favorites
+      addFavoriteTerminalTheme: (theme) =>
+        set((state) => ({
+          favoriteTerminalThemes: state.favoriteTerminalThemes.includes(theme)
+            ? state.favoriteTerminalThemes
+            : [...state.favoriteTerminalThemes, theme],
+        })),
+      removeFavoriteTerminalTheme: (theme) =>
+        set((state) => ({
+          favoriteTerminalThemes: state.favoriteTerminalThemes.filter((t) => t !== theme),
+        })),
+      toggleFavoriteTerminalTheme: (theme) =>
+        set((state) => ({
+          favoriteTerminalThemes: state.favoriteTerminalThemes.includes(theme)
+            ? state.favoriteTerminalThemes.filter((t) => t !== theme)
+            : [...state.favoriteTerminalThemes, theme],
+        })),
+      // Quick Terminal methods
+      setQuickTerminalEnabled: (enabled) =>
+        set((state) => ({
+          quickTerminal: { ...state.quickTerminal, enabled },
+        })),
+      setQuickTerminalButtonPosition: (position) =>
+        set((state) => ({
+          quickTerminal: { ...state.quickTerminal, buttonPosition: position },
+        })),
+      setQuickTerminalModalPosition: (position) =>
+        set((state) => ({
+          quickTerminal: { ...state.quickTerminal, modalPosition: position },
+        })),
+      setQuickTerminalModalSize: (size) =>
+        set((state) => ({
+          quickTerminal: { ...state.quickTerminal, modalSize: size },
+        })),
+      setQuickTerminalOpen: (open) =>
+        set((state) => ({
+          quickTerminal: { ...state.quickTerminal, isOpen: open },
+        })),
     }),
     {
       name: 'enso-settings',
@@ -1044,6 +1150,11 @@ export const useSettingsStore = create<SettingsState>()(
           // MCP, Prompts - use persisted or defaults
           mcpServers: persisted.mcpServers ?? currentState.mcpServers,
           promptPresets: persisted.promptPresets ?? currentState.promptPresets,
+          // Quick Terminal - deep merge with defaults
+          quickTerminal: {
+            ...currentState.quickTerminal,
+            ...persisted.quickTerminal,
+          },
         };
       },
       onRehydrateStorage: () => (state) => {
