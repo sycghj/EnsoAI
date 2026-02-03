@@ -1,6 +1,7 @@
 import { stopAllCodeReviews } from '../services/ai';
 import { disposeClaudeIdeBridge } from '../services/claude/ClaudeIdeBridge';
 import { autoUpdaterService } from '../services/updater/AutoUpdater';
+import { webInspectorServer } from '../services/webInspector';
 import { registerAgentHandlers } from './agent';
 import { registerAppHandlers } from './app';
 import { registerClaudeConfigHandlers } from './claudeConfig';
@@ -23,6 +24,7 @@ import {
   registerTerminalHandlers,
 } from './terminal';
 import { registerUpdaterHandlers } from './updater';
+import { registerWebInspectorHandlers } from './webInspector';
 import { clearAllWorktreeServices, registerWorktreeHandlers } from './worktree';
 import { stopAllCCBProcesses } from './ccb';
 import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
@@ -50,6 +52,7 @@ export function registerIpcHandlers(): void {
   registerHapiHandlers();
   registerClaudeProviderHandlers();
   registerClaudeConfigHandlers();
+  registerWebInspectorHandlers();
 }
 
 export async function cleanupAllResources(): Promise<void> {
@@ -57,6 +60,9 @@ export async function cleanupAllResources(): Promise<void> {
 
   // Stop Hapi server first (sync, fast)
   cleanupHapi();
+
+  // Stop Web Inspector server (sync, fast)
+  webInspectorServer.stop();
 
   // Stop all code review processes (sync, fast)
   stopAllCodeReviews();
@@ -120,7 +126,7 @@ export function cleanupAllResourcesSync(): void {
   // Kill Hapi/Cloudflared processes (sync)
   cleanupHapi();
 
-  // Stop all CCB processes (sync)
+// Stop all CCB processes (sync)
   stopAllCCBProcesses();
 
   // Stop accepting new CCB RPC requests (sync best-effort)
@@ -130,6 +136,9 @@ export function cleanupAllResourcesSync(): void {
   } catch {
     // Ignore
   }
+
+  // Stop Web Inspector server (sync)
+  webInspectorServer.stop();
 
   // Kill all PTY sessions immediately (sync)
   destroyAllTerminals();

@@ -16,7 +16,10 @@ export function useGitStatus(workdir: string | null, isActive = true) {
       return status;
     },
     enabled: !!workdir,
-    refetchInterval: isActive && shouldPoll ? 5000 : false,
+    refetchInterval: (query) => {
+      if (!isActive || !shouldPoll) return false;
+      return query.state.data?.truncated ? 60000 : 5000;
+    },
     refetchIntervalInBackground: false,
   });
 }
@@ -195,6 +198,7 @@ export function useAutoFetchListener() {
       queryClient.invalidateQueries({ queryKey: ['git', 'status'] });
       queryClient.invalidateQueries({ queryKey: ['git', 'branches'] });
       queryClient.invalidateQueries({ queryKey: ['worktree', 'list'] });
+      queryClient.invalidateQueries({ queryKey: ['worktree', 'listMultiple'] });
     });
 
     return cleanup;

@@ -742,6 +742,13 @@ export const zhTranslations: Record<string, string> = {
   'Restore default prompt': '恢复默认提示词',
   'This will restore the default AI prompt for generating branch names. Your custom prompt will be lost.':
     '这将恢复生成分支名称的默认 AI 提示词。您的自定义提示词将丢失。',
+  // Commit Prompt section
+  'Commit Prompt': '提交提示词',
+  'Customize the AI prompt for generating commit messages': '自定义生成提交信息的 AI 提示词',
+  'Enter a prompt template for generating commit messages.\nAvailable variables:\n• {recent_commits} - Recent commit messages\n• {staged_stat} - Staged changes statistics\n• {staged_diff} - Staged changes diff':
+    '输入提示词模板，AI 将根据您的规则生成提交信息。\n可用变量：\n• {recent_commits} - 最近的提交信息\n• {staged_stat} - 暂存区变更统计\n• {staged_diff} - 暂存区变更详情',
+  'This will restore the default AI prompt for generating commit messages. Your custom prompt will be lost.':
+    '这将恢复生成提交信息的默认 AI 提示词。您的自定义提示词将丢失。',
   // Auto Save section
   'Auto Save': '自动保存',
   'Auto save settings': '自动保存设置',
@@ -1057,6 +1064,32 @@ export const zhTranslations: Record<string, string> = {
   'Show split preview': '显示分屏预览',
   'Switch to fullscreen preview': '切换到全屏预览',
   'Close preview': '关闭预览',
+  // Web Inspector
+  'Web Inspector': 'Web Inspector',
+  'Inspect web elements and send to agent': '检查网页元素并发送给 Agent',
+  'Start Web Inspector server on port {{port}}': '在端口 {{port}} 启动 Web Inspector 服务',
+  'Running on port {{port}}': '正在端口 {{port}} 运行',
+  Stopped: '已停止',
+  Unknown: '未知',
+  'Userscript Installation': '用户脚本安装',
+  'Install the userscript to enable element inspection in your browser':
+    '安装用户脚本以在浏览器中启用元素检查',
+  'To use Web Inspector, you need to install a userscript in your browser.':
+    '要使用 Web Inspector，您需要在浏览器中安装用户脚本。',
+  or: '或',
+  'browser extension': '浏览器扩展',
+  'Click the button below to open the script installation page': '点击下方按钮打开脚本安装页面',
+  'Click "Install" in the userscript manager': '在用户脚本管理器中点击「安装」',
+  'Install Userscript': '安装用户脚本',
+  Usage: '使用方法',
+  'How to use Web Inspector': '如何使用 Web Inspector',
+  'Enable Web Inspector above': '在上方启用 Web Inspector',
+  'Open any webpage with the userscript installed': '打开任意已安装用户脚本的网页',
+  'Click the userscript manager icon and select "Enable Web Inspector"':
+    '点击油猴图标，选择「启用 Web Inspector」',
+  'Click the Enso button on the webpage': '点击网页上的 Enso 按钮',
+  'Click on any element to inspect': '点击任意元素进行检查',
+  'Element info will be sent to your active agent session': '元素信息将发送到当前活跃的 Agent 会话',
 };
 
 export function normalizeLocale(input?: string): Locale {

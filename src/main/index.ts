@@ -34,12 +34,28 @@ import { checkGitInstalled } from './services/git/checkGit';
 import { gitAutoFetchService } from './services/git/GitAutoFetchService';
 import { setCurrentLocale } from './services/i18n';
 import { buildAppMenu } from './services/MenuBuilder';
+import { webInspectorServer } from './services/webInspector';
 import { createMainWindow } from './windows/MainWindow';
 
 let mainWindow: BrowserWindow | null = null;
 let pendingOpenPath: string | null = null;
 let cleanupWindowHandlers: (() => void) | null = null;
 let ccbRpcServer: EnsoRPCServer | null = null;
+
+const isDev = !app.isPackaged;
+
+function sanitizeProfileName(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/[^a-zA-Z0-9._-]+/g, '-');
+}
+
+// In dev mode, use an isolated userData dir to avoid clashing with the packaged app.
+// This prevents Chromium/Electron profile locking from causing an "empty" localStorage in later instances.
+if (isDev) {
+  const profile = sanitizeProfileName(process.env.ENSOAI_PROFILE || '') || 'dev';
+  app.setPath('userData', join(app.getPath('appData'), `${app.getName()}-${profile}`));
+}
 
 // Register URL scheme handler (must be done before app is ready)
 if (process.defaultApp) {
@@ -123,23 +139,21 @@ app.on('open-url', (event, url) => {
   }
 });
 
-// Windows/Linux: Handle second instance (skip in dev mode to allow multiple instances)
-const isDev = !app.isPackaged;
-if (!isDev) {
-  const gotTheLock = app.requestSingleInstanceLock();
-  if (!gotTheLock) {
-    app.quit();
-  } else {
-    app.on('second-instance', (_, commandLine) => {
-      // Focus existing window
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
-      }
-      // Handle command line from second instance
-      handleCommandLineArgs(commandLine);
-    });
-  }
+// Handle second instance (single-instance per userData profile).
+// In dev mode, set `ENSOAI_PROFILE` to run multiple isolated instances.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (_, commandLine) => {
+    // Focus existing window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    // Handle command line from second instance
+    handleCommandLineArgs(commandLine);
+  });
 }
 
 function readStoredLanguage(): Locale {
@@ -243,7 +257,7 @@ app.whenReady().then(async () => {
 
   mainWindow = createMainWindow();
 
-  // CCB Enso Backend: start JSON-RPC server after window is ready/created.
+// CCB Enso Backend: start JSON-RPC server after window is ready/created.
   // This allows CCB to inject commands into Enso-managed PTYs.
   if (!ccbRpcServer) {
     ccbRpcServer = new EnsoRPCServer(mainWindow);
@@ -284,6 +298,9 @@ app.whenReady().then(async () => {
     ccbRpcServer.setMainWindow(mainWindow);
   }
 
+  // Set main window for Web Inspector server (for IPC communication)
+  webInspectorServer.setMainWindow(mainWindow);
+
   // Register window control handlers (must be after mainWindow is created)
   cleanupWindowHandlers = registerWindowHandlers(mainWindow);
 
@@ -293,6 +310,7 @@ app.whenReady().then(async () => {
       cleanupWindowHandlers();
       cleanupWindowHandlers = null;
     }
+    webInspectorServer.setMainWindow(null);
     mainWindow = null;
   });
   // Initialize Claude Provider Watcher

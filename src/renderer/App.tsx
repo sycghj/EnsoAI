@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { consumeClaudeProviderSwitch, isClaudeProviderMatch } from '@/lib/claudeProvider';
 import { normalizeHexColor } from '@/lib/colors';
+import { cn } from '@/lib/utils';
 import {
   ALL_GROUP_ID,
   DEFAULT_GROUP_COLOR,
@@ -62,6 +63,7 @@ import { addToast, toastManager } from './components/ui/toast';
 import { MergeEditor, MergeWorktreeDialog } from './components/worktree';
 import { useEditor } from './hooks/useEditor';
 import { useAutoFetchListener, useGitBranches, useGitInit } from './hooks/useGit';
+import { useWebInspector } from './hooks/useWebInspector';
 import {
   useWorktreeCreate,
   useWorktreeList,
@@ -158,6 +160,66 @@ export default function App() {
     }
   }, [settingsCategory]);
 
+  // Global drag-and-drop for repository sidebar
+  const [isFileDragOver, setIsFileDragOver] = useState(false);
+  const repositorySidebarRef = useRef<HTMLDivElement>(null);
+  const isFileDragOverRef = useRef(false);
+
+  // Keep ref in sync with state for use in event handlers
+  useEffect(() => {
+    isFileDragOverRef.current = isFileDragOver;
+  }, [isFileDragOver]);
+
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+
+      // Check if over sidebar
+      const el = repositorySidebarRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const over =
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom;
+        setIsFileDragOver(over);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      if (e.clientX <= 0 || e.clientY <= 0) {
+        setIsFileDragOver(false);
+      }
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      const wasOver = isFileDragOverRef.current;
+      setIsFileDragOver(false);
+
+      if (wasOver && e.dataTransfer?.files.length) {
+        const file = e.dataTransfer.files[0];
+        const path = window.electronAPI.utils.getPathForFile(file);
+        if (path) {
+          setInitialLocalPath(path);
+          setAddRepoDialogOpen(true);
+        }
+      }
+    };
+
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('drop', handleDrop);
+    return () => {
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('dragleave', handleDragLeave);
+      document.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
   // 创建回调函数
   const handleSettingsCategoryChange = useCallback((category: SettingsCategory) => {
     setSettingsCategory(category);
@@ -165,6 +227,7 @@ export default function App() {
 
   // Add Repository dialog state
   const [addRepoDialogOpen, setAddRepoDialogOpen] = useState(false);
+  const [initialLocalPath, setInitialLocalPath] = useState<string | null>(null);
 
   // Action panel state
   const [actionPanelOpen, setActionPanelOpen] = useState(false);
@@ -343,6 +406,9 @@ export default function App() {
       switchWorktreePathRef.current?.(nextWorktreePath);
     }, [activeWorktree?.path]),
   });
+
+  // Web Inspector: listen for element inspection data and write to active agent terminal
+  useWebInspector(activeWorktree?.path, selectedRepo ?? undefined);
 
   // Handle terminal file link navigation
   useEffect(() => {
@@ -1084,27 +1150,62 @@ export default function App() {
     }
   };
 
-  const handleRemoveWorktree = async (
+  const handleRemoveWorktree = (
     worktree: GitWorktree,
     options?: { deleteBranch?: boolean; force?: boolean }
   ) => {
     if (!selectedRepo) return;
-    await removeWorktreeMutation.mutateAsync({
-      workdir: selectedRepo,
-      options: {
-        path: worktree.path,
-        force: worktree.prunable || options?.force, // prunable or user-selected force delete
-        deleteBranch: options?.deleteBranch,
-        branch: worktree.branch || undefined,
-      },
+
+    // Show loading toast
+    const toastId = toastManager.add({
+      type: 'loading',
+      title: t('Deleting...'),
+      description: worktree.branch || worktree.path,
+      timeout: 0,
     });
-    // Clear editor state for the removed worktree
-    clearEditorWorktreeState(worktree.path);
-    // Clear selection if the active worktree was removed.
-    if (activeWorktree?.path === worktree.path) {
-      setActiveWorktree(null);
-    }
-    refetchBranches();
+
+    // Execute deletion asynchronously (non-blocking)
+    removeWorktreeMutation
+      .mutateAsync({
+        workdir: selectedRepo,
+        options: {
+          path: worktree.path,
+          force: worktree.prunable || options?.force,
+          deleteBranch: options?.deleteBranch,
+          branch: worktree.branch || undefined,
+        },
+      })
+      .then(() => {
+        // Clear editor state for the removed worktree
+        clearEditorWorktreeState(worktree.path);
+        // Clear selection if the active worktree was removed
+        if (activeWorktree?.path === worktree.path) {
+          setActiveWorktree(null);
+        }
+        refetchBranches();
+
+        // Show success toast
+        toastManager.close(toastId);
+        toastManager.add({
+          type: 'success',
+          title: t('Worktree deleted'),
+          description: worktree.branch || worktree.path,
+        });
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        const hasUncommitted = message.includes('modified or untracked');
+
+        // Show error toast
+        toastManager.close(toastId);
+        toastManager.add({
+          type: 'error',
+          title: t('Delete failed'),
+          description: hasUncommitted
+            ? t('This directory contains uncommitted changes. Please check "Force delete".')
+            : message,
+        });
+      });
   };
 
   const handleInitGit = async () => {
@@ -1238,6 +1339,7 @@ export default function App() {
           <AnimatePresence initial={false}>
             {!repositoryCollapsed && (
               <motion.div
+                ref={repositorySidebarRef}
                 key="tree-sidebar"
                 initial={{ width: 0, opacity: 0 }}
                 animate={{ width: treeSidebarWidth, opacity: 1 }}
@@ -1283,6 +1385,7 @@ export default function App() {
                   toggleSelectedRepoExpandedRef={toggleSelectedRepoExpandedRef}
                   isSettingsActive={activeTab === 'settings'}
                   onToggleSettings={toggleSettings}
+                  isFileDragOver={isFileDragOver}
                 />
                 {/* Resize handle */}
                 <div
@@ -1299,6 +1402,7 @@ export default function App() {
             <AnimatePresence initial={false}>
               {!repositoryCollapsed && (
                 <motion.div
+                  ref={repositorySidebarRef}
                   key="repository"
                   initial={{ width: 0, opacity: 0 }}
                   animate={{ width: repositoryWidth, opacity: 1 }}
@@ -1327,6 +1431,7 @@ export default function App() {
                     onSwitchWorktreeByPath={handleSwitchWorktreePath}
                     isSettingsActive={activeTab === 'settings'}
                     onToggleSettings={toggleSettings}
+                    isFileDragOver={isFileDragOver}
                   />
                   {/* Resize handle */}
                   <div
@@ -1421,6 +1526,8 @@ export default function App() {
           onAddLocal={handleAddLocalRepository}
           onCloneComplete={handleCloneRepository}
           onCreateGroup={handleCreateGroup}
+          initialLocalPath={initialLocalPath ?? undefined}
+          onClearInitialLocalPath={() => setInitialLocalPath(null)}
         />
 
         {/* Action Panel */}

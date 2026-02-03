@@ -34,10 +34,11 @@ import { useSettingsStore } from '@/stores/settings';
 import { useTerminalWriteStore } from '@/stores/terminalWrite';
 import { CommentForm, useEditorLineComment } from './EditorLineComment';
 import { EditorTabs } from './EditorTabs';
-import { isImageFile } from './fileIcons';
+import { isImageFile, isPdfFile } from './fileIcons';
 import { ImagePreview } from './ImagePreview';
 import { MarkdownPreview } from './MarkdownPreview';
 import { CUSTOM_THEME_NAME, defineMonacoTheme } from './monacoTheme';
+import { PdfPreview } from './PdfPreview';
 // Import for side effects (Monaco setup)
 import './monacoSetup';
 
@@ -120,6 +121,7 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
   // Markdown preview state
   const isMarkdown = isMarkdownFile(activeTabPath);
   const isImage = isImageFile(activeTabPath);
+  const isPdf = isPdfFile(activeTabPath);
   const [previewMode, setPreviewMode] = useState<MarkdownPreviewMode>('off');
   const [editorReady, setEditorReady] = useState(false);
   const [previewWidth, setPreviewWidth] = useState(50); // percentage
@@ -490,14 +492,14 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
               return;
             }
 
-            // Format: @path#L1-L10 or @path#L5
+            // Format: path#L1-L10 or path#L5
             const lineRef =
               selection.startLineNumber === selection.endLineNumber
                 ? `L${selection.startLineNumber}`
                 : `L${selection.startLineNumber}-L${selection.endLineNumber}`;
             const message = text
-              ? `@${displayPath}#${lineRef}\nUser comment: "${text}"`
-              : `@${displayPath}#${lineRef}`;
+              ? `${displayPath}#${lineRef}\nUser comment: "${text}"`
+              : `${displayPath}#${lineRef}`;
             write(sessionId, `${message}\r`);
 
             // Close comment widget
@@ -924,7 +926,7 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
               className="relative h-full overflow-hidden"
               style={{
                 width:
-                  previewMode === 'off'
+                  !isMarkdown || previewMode === 'off'
                     ? '100%'
                     : previewMode === 'split'
                       ? `${100 - previewWidth}%`
@@ -933,6 +935,8 @@ export const EditorArea = forwardRef<EditorAreaRef, EditorAreaProps>(function Ed
             >
               {isImage ? (
                 <ImagePreview path={activeTab.path} sessionId={sessionId ?? undefined} />
+              ) : isPdf ? (
+                <PdfPreview path={activeTab.path} sessionId={sessionId ?? undefined} />
               ) : (
                 <Editor
                   key={activeTab.path}
