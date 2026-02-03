@@ -25,9 +25,7 @@ export function CCBPaneLayout({ isActive = false, worktreePath }: CCBPaneLayoutP
   const panes = useCCBPanesStore((s) =>
     worktreeKey ? (s.worktrees[worktreeKey]?.panes ?? []) : []
   );
-  const layout = useCCBPanesStore((s) =>
-    worktreeKey ? s.worktrees[worktreeKey]?.layout : null
-  );
+  const layout = useCCBPanesStore((s) => (worktreeKey ? s.worktrees[worktreeKey]?.layout : null));
   const setActivePaneIndex = useCCBPanesStore((s) => s.setActivePaneIndex);
   const removePane = useCCBPanesStore((s) => s.removePane);
 
@@ -48,6 +46,16 @@ export function CCBPaneLayout({ isActive = false, worktreePath }: CCBPaneLayoutP
     [removePane]
   );
 
+  // Memoize panes by slot (must be before any early return)
+  const activeIndex = layout?.activePaneIndex ?? 0;
+  const panesBySlot = useMemo(() => {
+    const map = new Map<number, (typeof panes)[number]>();
+    for (const pane of panes) {
+      map.set(pane.slotIndex, pane);
+    }
+    return map;
+  }, [panes]);
+
   if (!worktreePath) {
     return (
       <div className="flex h-full w-full items-center justify-center text-muted-foreground">
@@ -58,15 +66,6 @@ export function CCBPaneLayout({ isActive = false, worktreePath }: CCBPaneLayoutP
       </div>
     );
   }
-
-  const activeIndex = layout?.activePaneIndex ?? 0;
-  const panesBySlot = useMemo(() => {
-    const map = new Map<number, (typeof panes)[number]>();
-    for (const pane of panes) {
-      map.set(pane.slotIndex, pane);
-    }
-    return map;
-  }, [panes]);
 
   const slots = [0, 1, 2, 3] as const;
 

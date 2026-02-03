@@ -42,7 +42,9 @@ function ensureElectronExecPath() {
       candidates.push(join(electronModulePath, 'dist', 'electron.exe'));
       candidates.push(join(electronModulePath, 'dist', 'Electron.exe'));
     } else if (process.platform === 'darwin') {
-      candidates.push(join(electronModulePath, 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron'));
+      candidates.push(
+        join(electronModulePath, 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron')
+      );
     } else {
       candidates.push(join(electronModulePath, 'dist', 'electron'));
     }

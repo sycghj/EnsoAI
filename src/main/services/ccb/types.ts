@@ -14,6 +14,8 @@ export interface EnsoRPCRequest {
     lines?: number;
     title?: string;
     env?: Record<string, string>;
+    slot_index?: number;
+    slotIndex?: number;
   };
 }
 
@@ -37,6 +39,8 @@ export interface PaneInfo {
   command: string;
   alive: boolean;
   pid?: number;
+  /** Slot index for 2x2 layout positioning (0-3) */
+  slotIndex?: number;
   /** Cached complete output lines (without trailing newlines). */
   outputBuffer: string[];
   /** Incomplete tail fragment (text after the last newline, not yet a full line). */

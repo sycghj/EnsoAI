@@ -192,11 +192,18 @@ export class EnsoRPCServer {
 
     switch (method) {
       case 'create_pane': {
+        const slotIndex =
+          typeof params.slot_index === 'number'
+            ? params.slot_index
+            : typeof params.slotIndex === 'number'
+              ? params.slotIndex
+              : undefined;
         const { pane_id, title } = this.core.createPane({
           command: params.command as string,
           cwd: params.cwd as string,
           title: params.title,
           env: params.env,
+          slotIndex,
         });
         return { pane_id, title };
       }

@@ -1,5 +1,5 @@
-import { normalizePath } from '@/App/storage';
 import { create } from 'zustand';
+import { normalizePath } from '@/App/storage';
 
 // Maximum pane slots for 2x2 layout
 const MAX_PANE_SLOTS = 4;
@@ -55,8 +55,16 @@ interface CCBPanesState {
   layout: CCBPaneLayout;
 
   // Actions
-  addExternalPane: (event: { ptyId: string; cwd: string; title?: string }) => ExternalAddResult;
-  ensureWorktreePanes: (worktreePath: string, options?: EnsureWorktreePanesOptions) => Promise<void>;
+  addExternalPane: (event: {
+    ptyId: string;
+    cwd: string;
+    title?: string;
+    slotIndex?: number;
+  }) => ExternalAddResult;
+  ensureWorktreePanes: (
+    worktreePath: string,
+    options?: EnsureWorktreePanesOptions
+  ) => Promise<void>;
   startCCB: (worktreePath: string) => Promise<{ success: boolean; error?: string }>;
   stopCCB: (worktreePath: string) => Promise<void>;
   getCCBStatus: (worktreePath: string) => CCBStatus;
@@ -67,7 +75,8 @@ interface CCBPanesState {
 }
 
 function clampSlotIndex(index: number): number {
-  return Math.max(0, Math.min(index, MAX_PANE_SLOTS - 1));
+  if (!Number.isFinite(index)) return 0;
+  return Math.max(0, Math.min(Math.trunc(index), MAX_PANE_SLOTS - 1));
 }
 
 function findFreeSlot(panes: CCBPane[]): number | null {
@@ -97,23 +106,45 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
   addExternalPane: (event) => {
     const key = normalizePath(event.cwd);
 
-    const current = get().worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null, ccbStatus: 'idle', ccbError: null };
-
     // Ignore duplicates (never destroy a PTY we already track)
     if (hasPaneId(get().worktrees, event.ptyId)) return 'ignored';
 
-    const slotIndex = findFreeSlot(current.panes);
-    if (slotIndex === null) {
-      return 'overflow';
-    }
+    let result: ExternalAddResult = 'added';
 
     set((state) => {
-      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: null, ccbStatus: 'idle', ccbError: null };
+      const prev = state.worktrees[key] ?? {
+        panes: [],
+        layout: { activePaneIndex: 0 },
+        cwd: null,
+        ccbStatus: 'idle',
+        ccbError: null,
+      };
       // Re-check inside set (race-safe)
       if (hasPaneId(state.worktrees, event.ptyId)) {
+        result = 'ignored';
         return state;
       }
-      if (prev.panes.some((p) => p.slotIndex === slotIndex)) {
+
+      // Prefer specified slotIndex if provided and not already taken
+      const requestedSlotIndex =
+        typeof event.slotIndex === 'number' ? clampSlotIndex(event.slotIndex) : null;
+
+      const slotConflict =
+        requestedSlotIndex !== null && prev.panes.some((p) => p.slotIndex === requestedSlotIndex);
+
+      if (slotConflict) {
+        console.warn(
+          `[CCB] Requested slot ${requestedSlotIndex} already occupied, falling back to auto-assign`
+        );
+      }
+
+      const slotIndex =
+        requestedSlotIndex !== null && !slotConflict
+          ? requestedSlotIndex
+          : findFreeSlot(prev.panes);
+
+      if (slotIndex === null) {
+        result = 'overflow';
         return state;
       }
 
@@ -143,7 +174,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
       };
     });
 
-    return 'added';
+    return result;
   },
 
   ensureWorktreePanes: async (worktreePath, _options) => {
@@ -162,13 +193,24 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
       set((state) => {
         const prev = state.worktrees[key];
         if (prev) {
-          return prev.cwd ? state : { ...state, worktrees: { ...state.worktrees, [key]: { ...prev, cwd: worktreePath } } };
+          return prev.cwd
+            ? state
+            : {
+                ...state,
+                worktrees: { ...state.worktrees, [key]: { ...prev, cwd: worktreePath } },
+              };
         }
         return {
           ...state,
           worktrees: {
             ...state.worktrees,
-            [key]: { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath, ccbStatus: 'idle', ccbError: null },
+            [key]: {
+              panes: [],
+              layout: { activePaneIndex: 0 },
+              cwd: worktreePath,
+              ccbStatus: 'idle',
+              ccbError: null,
+            },
           },
         };
       });
@@ -195,7 +237,13 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
 
     // Update status to starting
     set((state) => {
-      const prev = state.worktrees[key] ?? { panes: [], layout: { activePaneIndex: 0 }, cwd: worktreePath, ccbStatus: 'idle', ccbError: null };
+      const prev = state.worktrees[key] ?? {
+        panes: [],
+        layout: { activePaneIndex: 0 },
+        cwd: worktreePath,
+        ccbStatus: 'idle',
+        ccbError: null,
+      };
       return {
         ...state,
         worktrees: {

@@ -14,6 +14,8 @@ import { autoStartHapi, cleanupHapi, registerHapiHandlers } from './hapi';
 
 export { autoStartHapi };
 
+import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
+import { stopAllCCBProcesses } from './ccb';
 import { registerNotificationHandlers } from './notification';
 import { registerSearchHandlers } from './search';
 import { registerSettingsHandlers } from './settings';
@@ -26,8 +28,6 @@ import {
 import { registerUpdaterHandlers } from './updater';
 import { registerWebInspectorHandlers } from './webInspector';
 import { clearAllWorktreeServices, registerWorktreeHandlers } from './worktree';
-import { stopAllCCBProcesses } from './ccb';
-import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
 
 let ccbRpcServer: EnsoRPCServer | null = null;
 

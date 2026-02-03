@@ -346,11 +346,11 @@ const electronAPI = {
 
   ccb: {
     onTerminalOpen: (
-      callback: (event: { ptyId: string; cwd: string; title?: string }) => void
+      callback: (event: { ptyId: string; cwd: string; title?: string; slotIndex?: number }) => void
     ): (() => void) => {
       const handler = (
         _: unknown,
-        event: { ptyId: string; cwd: string; title?: string }
+        event: { ptyId: string; cwd: string; title?: string; slotIndex?: number }
       ) => callback(event);
       ipcRenderer.on(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.CCB_TERMINAL_OPEN, handler);
@@ -366,10 +366,8 @@ const electronAPI = {
     onStatusChanged: (
       callback: (event: { cwd: string; status: string; error?: string }) => void
     ): (() => void) => {
-      const handler = (
-        _: unknown,
-        event: { cwd: string; status: string; error?: string }
-      ) => callback(event);
+      const handler = (_: unknown, event: { cwd: string; status: string; error?: string }) =>
+        callback(event);
       ipcRenderer.on(IPC_CHANNELS.CCB_STATUS_CHANGED, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.CCB_STATUS_CHANGED, handler);
     },

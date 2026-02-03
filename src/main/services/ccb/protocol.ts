@@ -97,6 +97,24 @@ export class RPCProtocol {
             reason: 'env must be a record of strings',
           });
         }
+        // Validate slot_index if provided (supports both slot_index and slotIndex)
+        const slotIndex =
+          (params as Record<string, unknown>).slot_index ??
+          (params as Record<string, unknown>).slotIndex;
+        if (
+          slotIndex !== undefined &&
+          !(
+            typeof slotIndex === 'number' &&
+            Number.isFinite(slotIndex) &&
+            Number.isInteger(slotIndex) &&
+            slotIndex >= 0 &&
+            slotIndex <= 3
+          )
+        ) {
+          return this.createErrorResponse(id, -32602, 'Invalid params', {
+            reason: 'slot_index must be an integer between 0 and 3',
+          });
+        }
         return null;
       }
 

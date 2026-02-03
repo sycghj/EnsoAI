@@ -23,12 +23,12 @@ import {
   registerIpcHandlers,
   setCcbRpcServer,
 } from './ipc';
-import { registerCCBHandlers, updateCCBRpcServer, stopAllCCBProcesses } from './ipc/ccb';
+import { registerCCBHandlers, updateCCBRpcServer } from './ipc/ccb';
 import { initClaudeProviderWatcher } from './ipc/claudeProvider';
 import { registerWindowHandlers } from './ipc/window';
+import { EnsoRPCServer } from './services/ccb/EnsoRPCServer';
 import { registerClaudeBridgeIpcHandlers } from './services/claude/ClaudeIdeBridge';
 import { unwatchClaudeSettings } from './services/claude/ClaudeProviderManager';
-import { EnsoRPCServer } from './services/ccb/EnsoRPCServer';
 import { isAllowedLocalFilePath } from './services/files/LocalFileAccess';
 import { checkGitInstalled } from './services/git/checkGit';
 import { gitAutoFetchService } from './services/git/GitAutoFetchService';

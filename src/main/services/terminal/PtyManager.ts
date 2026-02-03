@@ -327,7 +327,10 @@ export class PtyManager {
     const id = `pty-${++this.counter}`;
 
     // Debug: log ENSO_RPC_* env vars
-    console.log('[PtyManager] Creating PTY, ENSO_RPC_TOKEN in process.env:', process.env.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET');
+    console.log(
+      '[PtyManager] Creating PTY, ENSO_RPC_TOKEN in process.env:',
+      process.env.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET'
+    );
     console.log('[PtyManager] options.env:', options.env);
 
     const home = process.env.HOME || process.env.USERPROFILE || homedir();
@@ -394,7 +397,10 @@ export class PtyManager {
     }
 
     // Debug: verify ENSO_RPC_* in final env
-    console.log('[PtyManager] finalEnv.ENSO_RPC_TOKEN:', finalEnv.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET');
+    console.log(
+      '[PtyManager] finalEnv.ENSO_RPC_TOKEN:',
+      finalEnv.ENSO_RPC_TOKEN ? 'SET' : 'NOT SET'
+    );
 
     try {
       ptyProcess = pty.spawn(shell, args, {

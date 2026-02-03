@@ -1,8 +1,8 @@
+import { type ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { ipcMain, type BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '@shared/types/ipc';
+import { type BrowserWindow, ipcMain } from 'electron';
 import type { EnsoRPCServer } from '../services/ccb/EnsoRPCServer';
 
 interface CCBStartOptions {

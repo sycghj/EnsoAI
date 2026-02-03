@@ -33,7 +33,7 @@ import { useI18n } from '@/i18n';
 import { springFast } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
-import { initCCBPaneListener, useCCBPanesStore, type CCBStatus } from '@/stores/ccbPanes';
+import { type CCBStatus, initCCBPaneListener, useCCBPanesStore } from '@/stores/ccbPanes';
 import { useSettingsStore } from '@/stores/settings';
 import { TerminalPanel } from '../terminal';
 

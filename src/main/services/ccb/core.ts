@@ -24,8 +24,13 @@ export class CCBCore {
     cwd: string;
     title?: string;
     env?: Record<string, string>;
+    slotIndex?: number;
   }): { pane_id: string; title: string } {
     const title = options.title ?? options.command;
+    const slotIndex =
+      typeof options.slotIndex === 'number' && Number.isFinite(options.slotIndex)
+        ? Math.trunc(options.slotIndex)
+        : undefined;
 
     const ptyId = this.ptyManager.create(
       {
@@ -73,6 +78,7 @@ export class CCBCore {
       title,
       cwd: options.cwd,
       command: options.command,
+      slotIndex,
       alive: true,
       pid,
       outputBuffer: [],
@@ -81,12 +87,14 @@ export class CCBCore {
     this.panes.set(ptyId, paneInfo);
 
     if (!this.mainWindow.isDestroyed()) {
-      console.log('[CCB][Core] Sending CCB_TERMINAL_OPEN event:', { ptyId, cwd: options.cwd, title });
-      this.mainWindow.webContents.send(IPC_CHANNELS.CCB_TERMINAL_OPEN, {
+      const payload = {
         ptyId,
         cwd: options.cwd,
         title,
-      });
+        ...(slotIndex === undefined ? {} : { slotIndex }),
+      };
+      console.log('[CCB][Core] Sending CCB_TERMINAL_OPEN event:', payload);
+      this.mainWindow.webContents.send(IPC_CHANNELS.CCB_TERMINAL_OPEN, payload);
     }
 
     return { pane_id: ptyId, title };
