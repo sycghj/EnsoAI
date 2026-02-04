@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { IPC_CHANNELS } from '@shared/types/ipc';
@@ -288,22 +288,50 @@ async function stopCCB(cwd: string): Promise<void> {
   state.error = null;
 
   if (isProcessAlive(state.process) && !state.process.killed) {
+    const pid = state.process.pid;
     try {
       // On Windows, we need to kill the process tree
-      if (process.platform === 'win32' && state.process.pid) {
-        spawn('taskkill', ['/pid', String(state.process.pid), '/f', '/t'], {
+      if (process.platform === 'win32' && pid) {
+        // Use spawnSync to wait for taskkill completion
+        const result = spawnSync('taskkill', ['/pid', String(pid), '/f', '/t'], {
           shell: true,
+          timeout: 10000, // 10 second timeout
         });
+
+        if (result.error) {
+          console.warn('[CCB] taskkill error:', result.error);
+        }
+        if (result.status !== 0) {
+          console.warn('[CCB] taskkill exited with code:', result.status);
+        }
       } else {
         state.process.kill('SIGTERM');
       }
     } catch (err) {
       console.warn('[CCB] Error stopping process:', err);
     }
-  } else {
-    state.process = null;
+
+    // Wait for process to actually exit (with timeout)
+    const waitStart = Date.now();
+    const maxWait = 5000; // 5 seconds max wait
+    while (isProcessAlive(state.process) && Date.now() - waitStart < maxWait) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (isProcessAlive(state.process)) {
+      console.warn('[CCB] Process did not exit after taskkill, forcing cleanup');
+      // Force SIGKILL as last resort on non-Windows
+      if (process.platform !== 'win32') {
+        try {
+          state.process.kill('SIGKILL');
+        } catch {
+          // Ignore
+        }
+      }
+    }
   }
 
+  state.process = null;
   state.status = 'idle';
   notifyStatusChange(state.cwd, 'idle');
 }
@@ -375,9 +403,14 @@ export function stopAllCCBProcesses(): void {
       console.log(`[CCB] Stopping CCB process for ${key}`);
       try {
         if (process.platform === 'win32' && state.process.pid) {
-          spawn('taskkill', ['/pid', String(state.process.pid), '/f', '/t'], {
+          // Use spawnSync for synchronous kill on app shutdown
+          const result = spawnSync('taskkill', ['/pid', String(state.process.pid), '/f', '/t'], {
             shell: true,
+            timeout: 5000, // 5 second timeout for shutdown
           });
+          if (result.error) {
+            console.warn('[CCB] taskkill error:', result.error);
+          }
         } else {
           state.process.kill('SIGTERM');
         }
@@ -385,6 +418,7 @@ export function stopAllCCBProcesses(): void {
         console.warn('[CCB] Error stopping process:', err);
       }
     }
+    state.process = null;
   }
   // Keep states to prevent late exit events from recreating fresh states
 }

@@ -134,13 +134,28 @@ export class CCBCore {
     }
   }
 
+  /**
+   * Send text to a pane, optionally followed by a simulated Enter key.
+   *
+   * For TUIs like Gemini CLI that run in raw mode, we send the text first,
+   * then send CR ('\r') separately after a brief delay. This mimics how
+   * a user would type text and then press Enter.
+   */
   sendText(paneId: string, text: string, addNewline = false): void {
     if (!this.panes.has(paneId)) {
       throw new Error(`Pane not found: ${paneId}`);
     }
 
-    const payload = addNewline ? `${text}\r` : text;
-    this.ptyManager.write(paneId, payload);
+    // Send the text content first
+    this.ptyManager.write(paneId, text);
+
+    if (addNewline) {
+      // Brief delay before sending Enter to allow TUI to process input
+      // Then send CR ('\r') which is what terminals send when Enter is pressed
+      setTimeout(() => {
+        this.ptyManager.write(paneId, '\r');
+      }, 50);
+    }
   }
 
   isAlive(paneId: string): { alive: boolean; pid?: number } {
