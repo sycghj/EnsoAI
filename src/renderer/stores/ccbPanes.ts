@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { normalizePath } from '@/App/storage';
+import { normalizePath, pathsEqual } from '@/App/storage';
+import { useAgentSessionsStore } from '@/stores/agentSessions';
+import { useWorktreeActivityStore } from '@/stores/worktreeActivity';
 
 // Maximum pane slots for 2x2 layout
 const MAX_PANE_SLOTS = 4;
@@ -67,6 +69,7 @@ interface CCBPanesState {
   ) => Promise<void>;
   startCCB: (worktreePath: string) => Promise<{ success: boolean; error?: string }>;
   stopCCB: (worktreePath: string) => Promise<void>;
+  closeWorktreeCCB: (worktreePath: string) => Promise<void>;
   getCCBStatus: (worktreePath: string) => CCBStatus;
   updateCCBStatus: (cwd: string, status: CCBStatus, error?: string) => void;
   removePane: (paneId: string) => void;
@@ -94,6 +97,41 @@ function hasPaneId(worktrees: WorktreeStates, paneId: string): boolean {
   return false;
 }
 
+/**
+ * Check if an agent ID is a CCB agent (handles -hapi/-happy suffixes).
+ */
+function isCCBAgent(agentId: string): boolean {
+  const baseId = agentId.endsWith('-hapi')
+    ? agentId.slice(0, -5)
+    : agentId.endsWith('-happy')
+      ? agentId.slice(0, -6)
+      : agentId;
+  return baseId === 'ccb';
+}
+
+/**
+ * Resolve the worktree key for a pane's cwd.
+ * Prefers an existing worktree entry whose cwd is the longest prefix of paneCwd.
+ * This avoids accidentally creating separate worktree states for subdirectories.
+ */
+function resolveWorktreeKeyForPaneCwd(worktrees: WorktreeStates, paneCwd: string): WorktreeKey {
+  const paneKey = normalizePath(paneCwd);
+  let bestKey: WorktreeKey = paneKey;
+  let bestPrefixLen = -1;
+
+  for (const [key, wt] of Object.entries(worktrees)) {
+    const base = wt.cwd ? normalizePath(wt.cwd) : key;
+    if (paneKey === base || paneKey.startsWith(`${base}/`)) {
+      if (base.length > bestPrefixLen) {
+        bestPrefixLen = base.length;
+        bestKey = key;
+      }
+    }
+  }
+
+  return bestKey;
+}
+
 const ensureInFlightByWorktree = new Map<WorktreeKey, Promise<void>>();
 
 export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
@@ -104,14 +142,14 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
   layout: { activePaneIndex: 0 },
 
   addExternalPane: (event) => {
-    const key = normalizePath(event.cwd);
-
     // Ignore duplicates (never destroy a PTY we already track)
     if (hasPaneId(get().worktrees, event.ptyId)) return 'ignored';
 
     let result: ExternalAddResult = 'added';
+    let activityWorktreePath: string | null = null;
 
     set((state) => {
+      const key = resolveWorktreeKeyForPaneCwd(state.worktrees, event.cwd);
       const prev = state.worktrees[key] ?? {
         panes: [],
         layout: { activePaneIndex: 0 },
@@ -160,6 +198,9 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
         },
       ];
 
+      // Track worktree path for CCB activity
+      activityWorktreePath = prev.cwd ?? event.cwd;
+
       return {
         ...state,
         worktrees: {
@@ -173,6 +214,11 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
         },
       };
     });
+
+    // Notify activity store that CCB is active for this worktree
+    if (activityWorktreePath && result === 'added') {
+      useWorktreeActivityStore.getState().setCCBActive(activityWorktreePath, true);
+    }
 
     return result;
   },
@@ -257,6 +303,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
       const result = await window.electronAPI.ccb.start({ cwd: worktreePath });
 
       if (result.success) {
+        useWorktreeActivityStore.getState().setCCBActive(worktreePath, true);
         set((state) => {
           const prev = state.worktrees[key];
           if (!prev) return state;
@@ -269,6 +316,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
           };
         });
       } else {
+        useWorktreeActivityStore.getState().setCCBActive(worktreePath, false);
         set((state) => {
           const prev = state.worktrees[key];
           if (!prev) return state;
@@ -285,6 +333,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
       return result;
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
+      useWorktreeActivityStore.getState().setCCBActive(worktreePath, false);
       set((state) => {
         const prev = state.worktrees[key];
         if (!prev) return state;
@@ -303,6 +352,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
   stopCCB: async (worktreePath) => {
     const key = normalizePath(worktreePath);
     await window.electronAPI.ccb.stop(worktreePath);
+    useWorktreeActivityStore.getState().setCCBActive(worktreePath, false);
 
     set((state) => {
       const prev = state.worktrees[key];
@@ -315,6 +365,119 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
         },
       };
     });
+  },
+
+  closeWorktreeCCB: async (worktreePath) => {
+    const rootKey = normalizePath(worktreePath);
+    const snapshot = get().worktrees;
+    const keysToClose = Object.keys(snapshot).filter(
+      (k) => k === rootKey || k.startsWith(`${rootKey}/`)
+    );
+
+    // Collect pane IDs to destroy
+    const paneIds: string[] = [];
+    for (const key of keysToClose) {
+      const wt = snapshot[key];
+      if (!wt) continue;
+      for (const pane of wt.panes) {
+        paneIds.push(pane.ptyId);
+      }
+    }
+
+    // Optimistically clear UI state so the 2x2 grid closes immediately
+    if (keysToClose.length > 0) {
+      set((state) => {
+        const next = { ...state.worktrees };
+        for (const key of keysToClose) {
+          delete next[key];
+        }
+        return { ...state, worktrees: next };
+      });
+    }
+
+    useWorktreeActivityStore.getState().setCCBActive(worktreePath, false);
+
+    // Remove CCB agent sessions for this worktree to prevent auto-restart
+    const {
+      removeSession,
+      removeGroupState,
+      updateGroupState,
+      setActiveId,
+    } = useAgentSessionsStore.getState();
+
+    // Get CCB session IDs from fresh state
+    const ccbSessionIds = useAgentSessionsStore
+      .getState()
+      .sessions.filter((s) => pathsEqual(s.cwd, worktreePath) && isCCBAgent(s.agentId))
+      .map((s) => s.id);
+
+    // Remove CCB sessions
+    for (const id of ccbSessionIds) {
+      removeSession(id);
+    }
+
+    // Handle group state and activeId cleanup
+    if (ccbSessionIds.length > 0) {
+      const removed = new Set(ccbSessionIds);
+      // Re-read sessions after removal to get accurate remaining count
+      const remainingSessions = useAgentSessionsStore
+        .getState()
+        .sessions.filter((s) => pathsEqual(s.cwd, worktreePath));
+
+      if (remainingSessions.length === 0) {
+        setActiveId(worktreePath, null);
+        removeGroupState(worktreePath);
+      } else {
+        // Ensure group state doesn't reference removed session ids
+        updateGroupState(worktreePath, (state) => {
+          if (state.groups.length === 0) return state;
+
+          const groupsBefore = state.groups.length;
+          const nextGroups = state.groups
+            .map((g) => {
+              const sessionIds = g.sessionIds.filter((sid) => !removed.has(sid));
+              const activeSessionId =
+                g.activeSessionId && sessionIds.includes(g.activeSessionId)
+                  ? g.activeSessionId
+                  : (sessionIds[0] ?? null);
+              return { ...g, sessionIds, activeSessionId };
+            })
+            .filter((g) => g.sessionIds.length > 0);
+
+          const activeGroupId = nextGroups.some((g) => g.id === state.activeGroupId)
+            ? state.activeGroupId
+            : (nextGroups[0]?.id ?? null);
+
+          const flexPercents =
+            nextGroups.length === groupsBefore
+              ? state.flexPercents
+              : nextGroups.length > 0
+                ? nextGroups.map(() => 100 / nextGroups.length)
+                : [];
+
+          return { groups: nextGroups, activeGroupId, flexPercents };
+        });
+
+        // Fix activeId if it was pointing to a removed CCB session
+        const activeKey = normalizePath(worktreePath);
+        const currentActiveId = useAgentSessionsStore.getState().activeIds[activeKey];
+        if (currentActiveId && removed.has(currentActiveId)) {
+          setActiveId(worktreePath, remainingSessions[0]?.id ?? null);
+        }
+      }
+    }
+
+    // Stop CCB to avoid new panes being created while we tear down PTYs
+    try {
+      await window.electronAPI.ccb.stop(worktreePath);
+    } catch (err) {
+      console.warn('[CCB] Failed to stop CCB:', err);
+    }
+
+    // Destroy all PTYs
+    if (paneIds.length > 0) {
+      await Promise.allSettled(paneIds.map((id) => window.electronAPI.terminal.destroy(id)));
+    }
   },
 
   getCCBStatus: (worktreePath) => {
@@ -337,7 +500,9 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
     });
   },
 
-  removePane: (paneId) =>
+  removePane: (paneId) => {
+    const pathsToDeactivate: string[] = [];
+
     set((state) => {
       let changed = false;
       const nextWorktrees: WorktreeStates = { ...state.worktrees };
@@ -350,10 +515,21 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
         const nextPanes = wt.panes.filter((p) => p.pane_id !== paneId);
         const activePaneIndex = clampSlotIndex(wt.layout.activePaneIndex);
         nextWorktrees[key] = { ...wt, panes: nextPanes, layout: { activePaneIndex } };
+
+        // If this was the last pane, mark worktree for deactivation
+        if (nextPanes.length === 0 && wt.cwd) {
+          pathsToDeactivate.push(wt.cwd);
+        }
       }
 
       return changed ? { ...state, worktrees: nextWorktrees } : state;
-    }),
+    });
+
+    // Deactivate CCB for worktrees that no longer have panes
+    for (const worktreePath of pathsToDeactivate) {
+      useWorktreeActivityStore.getState().setCCBActive(worktreePath, false);
+    }
+  },
 
   setActivePaneIndex: (worktreePath, index) =>
     set((state) => {
@@ -394,6 +570,15 @@ export function initCCBPaneListener(): () => void {
   if (ccbPaneListenerCleanup) return ccbPaneListenerCleanup;
 
   const { addExternalPane, removePane, updateCCBStatus } = useCCBPanesStore.getState();
+  const { registerAgentCloseHandler, registerTerminalCloseHandler } =
+    useWorktreeActivityStore.getState();
+
+  // Register CCB close handler for both agent and terminal close events
+  const handleCloseCCB = (worktreePath: string) => {
+    void useCCBPanesStore.getState().closeWorktreeCCB(worktreePath);
+  };
+  const cleanupAgentClose = registerAgentCloseHandler(handleCloseCCB);
+  const cleanupTerminalClose = registerTerminalCloseHandler(handleCloseCCB);
 
   // Listen for new pane creation
   const unsubscribeOpen = window.electronAPI.ccb.onTerminalOpen((event) => {
@@ -420,6 +605,8 @@ export function initCCBPaneListener(): () => void {
     unsubscribeOpen();
     unsubscribeExit();
     unsubscribeStatus();
+    cleanupAgentClose();
+    cleanupTerminalClose();
     ccbPaneListenerCleanup = null;
   };
 
