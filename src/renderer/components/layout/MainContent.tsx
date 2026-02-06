@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
 import { type CCBStatus, initCCBPaneListener, useCCBPanesStore } from '@/stores/ccbPanes';
 import { useSettingsStore } from '@/stores/settings';
+import { useTerminalWriteStore } from '@/stores/terminalWrite';
 import { TerminalPanel } from '../terminal';
 
 type LayoutMode = 'columns' | 'tree';
@@ -140,6 +141,12 @@ export function MainContent({
   const ccbStatus = useCCBPanesStore((s) =>
     worktreeKey ? (s.worktrees[worktreeKey]?.ccbStatus ?? 'idle') : 'idle'
   ) as CCBStatus;
+
+  // Sync activeSessionId to terminalWrite store for global access (e.g., toast "Send to Session")
+  const setActiveSessionId = useTerminalWriteStore((s) => s.setActiveSessionId);
+  useEffect(() => {
+    setActiveSessionId(activeSessionId);
+  }, [activeSessionId, setActiveSessionId]);
 
   // Tab metadata configuration (excludes 'settings' as it's not shown in the tab bar)
   const tabConfigMap: Record<
@@ -535,6 +542,7 @@ export function MainContent({
           )}
         >
           <TerminalPanel
+            repoPath={effectiveRepoPath ?? undefined}
             cwd={effectiveWorktreePath ?? undefined}
             isActive={activeTab === 'terminal' && hasActiveWorktree}
           />

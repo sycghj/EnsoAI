@@ -2,6 +2,8 @@ import type { ProxySettings } from '@shared/types';
 import { IPC_CHANNELS } from '@shared/types';
 import { ipcMain } from 'electron';
 import { appDetector } from '../services/app/AppDetector';
+import { validateLocalPath } from '../services/app/PathValidator';
+import { getRecentProjects } from '../services/app/RecentProjectsService';
 import { applyProxy, testProxy } from '../services/proxy/ProxyConfig';
 
 export function registerAppHandlers() {
@@ -33,4 +35,12 @@ export function registerAppHandlers() {
   ipcMain.handle(IPC_CHANNELS.APP_SET_PROXY, (_, settings: ProxySettings) => applyProxy(settings));
 
   ipcMain.handle(IPC_CHANNELS.APP_TEST_PROXY, (_, proxyUrl: string) => testProxy(proxyUrl));
+
+  ipcMain.handle(IPC_CHANNELS.APP_RECENT_PROJECTS, async () => {
+    return await getRecentProjects();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_VALIDATE_LOCAL_PATH, async (_, path: string) => {
+    return await validateLocalPath(path);
+  });
 }

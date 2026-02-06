@@ -20,6 +20,7 @@ import { registerNotificationHandlers } from './notification';
 import { registerSearchHandlers } from './search';
 import { registerSettingsHandlers } from './settings';
 import { registerShellHandlers } from './shell';
+import { registerTempWorkspaceHandlers } from './tempWorkspace';
 import {
   destroyAllTerminals,
   destroyAllTerminalsAndWait,
@@ -53,6 +54,7 @@ export function registerIpcHandlers(): void {
   registerClaudeProviderHandlers();
   registerClaudeConfigHandlers();
   registerWebInspectorHandlers();
+  registerTempWorkspaceHandlers();
 }
 
 export async function cleanupAllResources(): Promise<void> {
