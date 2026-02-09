@@ -26,6 +26,7 @@ import {
   destroyAllTerminalsAndWait,
   registerTerminalHandlers,
 } from './terminal';
+import { cleanupTmux, cleanupTmuxSync, registerTmuxHandlers } from './tmux';
 import { registerUpdaterHandlers } from './updater';
 import { registerWebInspectorHandlers } from './webInspector';
 import { clearAllWorktreeServices, registerWorktreeHandlers } from './worktree';
@@ -55,6 +56,7 @@ export function registerIpcHandlers(): void {
   registerClaudeConfigHandlers();
   registerWebInspectorHandlers();
   registerTempWorkspaceHandlers();
+  registerTmuxHandlers();
 }
 
 export async function cleanupAllResources(): Promise<void> {
@@ -62,6 +64,9 @@ export async function cleanupAllResources(): Promise<void> {
 
   // Stop Hapi server first (sync, fast)
   cleanupHapi();
+
+  // Kill tmux enso server (async, fast)
+  cleanupTmux().catch((err) => console.warn('Tmux cleanup warning:', err));
 
   // Stop Web Inspector server (sync, fast)
   webInspectorServer.stop();
@@ -128,7 +133,10 @@ export function cleanupAllResourcesSync(): void {
   // Kill Hapi/Cloudflared processes (sync)
   cleanupHapi();
 
-// Stop all CCB processes (sync)
+  // Kill tmux enso server (sync)
+  cleanupTmuxSync();
+
+  // Stop all CCB processes (sync)
   stopAllCCBProcesses();
 
   // Stop accepting new CCB RPC requests (sync best-effort)
