@@ -105,6 +105,7 @@ export const IPC_CHANNELS = {
   CCB_STOP: 'ccb:stop',
   CCB_GET_STATUS: 'ccb:getStatus',
   CCB_STATUS_CHANGED: 'ccb:statusChanged',
+  CCB_GET_HISTORY: 'ccb:getHistory',
 
   // Agent
   AGENT_LIST: 'agent:list',

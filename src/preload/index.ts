@@ -397,6 +397,11 @@ const electronAPI = {
     stop: (cwd: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.CCB_STOP, cwd),
     getStatus: (cwd: string): Promise<{ status: string; error: string | null }> =>
       ipcRenderer.invoke(IPC_CHANNELS.CCB_GET_STATUS, cwd),
+    getHistory: (
+      ptyId: string,
+      lines?: number
+    ): Promise<{ text: string; total_lines: number } | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.CCB_GET_HISTORY, ptyId, lines),
     onStatusChanged: (
       callback: (event: { cwd: string; status: string; error?: string }) => void
     ): (() => void) => {

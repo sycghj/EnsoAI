@@ -37,6 +37,8 @@ export interface UseXtermOptions {
   env?: Record<string, string>;
   /** Attach to an already-created PTY session id (e.g. `pty-1`). */
   existingPtyId?: string;
+  /** Replay CCB history buffer before attaching to live stream. */
+  enableCcbHistoryReplay?: boolean;
   isActive?: boolean;
   initialCommand?: string;
   onExit?: () => void;
@@ -110,6 +112,7 @@ export function useXterm({
   command,
   env,
   existingPtyId,
+  enableCcbHistoryReplay = false,
   isActive = true,
   initialCommand,
   onExit,
@@ -595,6 +598,22 @@ export function useXterm({
     };
 
     if (isAttachMode && attachPtyId) {
+      // Only replay CCB history when explicitly opted-in to avoid blocking
+      // non-CCB terminal attaches with an unnecessary IPC roundtrip.
+      if (enableCcbHistoryReplay) {
+        // Replay buffered history before subscribing to new data.
+        // Order matters: snapshot history first, then subscribe, to avoid duplication.
+        try {
+          const history = await window.electronAPI.ccb.getHistory(attachPtyId);
+          if (history?.text) {
+            // CCBCore normalizes newlines to LF; xterm needs CRLF for correct rendering.
+            terminal.write(history.text.replace(/\n/g, '\r\n'));
+          }
+        } catch {
+          // History unavailable - proceed without replay
+        }
+      }
+
       attachToPty(attachPtyId);
       // Sync PTY size to current xterm size when attaching.
       window.electronAPI.terminal.resize(attachPtyId, { cols: terminal.cols, rows: terminal.rows });
@@ -624,7 +643,7 @@ export function useXterm({
       terminal.writeln(`\x1b[31mFailed to start terminal.\x1b[0m`);
       terminal.writeln(`\x1b[33mError: ${error}\x1b[0m`);
     }
-  }, [cwd, command, shellConfig, commandKey, terminalRenderer, existingPtyId]);
+  }, [cwd, command, shellConfig, commandKey, terminalRenderer, existingPtyId, enableCcbHistoryReplay]);
 
   useEffect(() => {
     const shouldActivate = isActive || initialCommandRef.current;
