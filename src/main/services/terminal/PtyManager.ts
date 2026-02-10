@@ -21,6 +21,11 @@ let cachedRegistryEnvVars: Record<string, string> | null = null;
 // Cache for Unix nvm node paths (read once)
 let cachedNvmNodePaths: string[] | null = null;
 
+// Cache for Windows .cmd lookup (avoid repeated PATH traversal)
+let cachedCmdLookupPath: string | null = null;
+let cachedCmdLookupDirs: string[] = [];
+const cachedCmdLookupResults = new Map<string, boolean>();
+
 /**
  * Clear cached PATH and environment variables (useful for debugging or after env changes)
  */
@@ -28,6 +33,9 @@ export function clearPathCache(): void {
   cachedWindowsPath = null;
   cachedRegistryEnvVars = null;
   cachedNvmNodePaths = null;
+  cachedCmdLookupPath = null;
+  cachedCmdLookupDirs = [];
+  cachedCmdLookupResults.clear();
   console.log('[PtyManager] PATH cache cleared');
 }
 
@@ -296,6 +304,94 @@ export function getEnhancedPath(): string {
   return allPaths.join(delimiter);
 }
 
+/**
+ * Extract effective PATH value from env override or process.env (case-insensitive).
+ */
+function getPathValue(env?: Record<string, string>): string {
+  if (env) {
+    for (const [key, value] of Object.entries(env)) {
+      if (key.toUpperCase() === 'PATH') {
+        return value;
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.toUpperCase() === 'PATH' && value) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Check if a .cmd wrapper exists for the given command name in PATH.
+ * Results are cached per PATH value to avoid repeated filesystem traversal.
+ */
+function hasCmdInPath(name: string, pathValue: string): boolean {
+  if (!pathValue) return false;
+
+  // Rebuild dir cache when PATH changes
+  if (cachedCmdLookupPath !== pathValue) {
+    cachedCmdLookupPath = pathValue;
+    cachedCmdLookupDirs = pathValue.split(delimiter).filter(Boolean);
+    cachedCmdLookupResults.clear();
+  }
+
+  const cacheKey = name.toLowerCase();
+  const cached = cachedCmdLookupResults.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const found = cachedCmdLookupDirs.some((dir) => {
+    try {
+      return existsSync(join(dir, `${name}.cmd`));
+    } catch {
+      return false;
+    }
+  });
+
+  cachedCmdLookupResults.set(cacheKey, found);
+  return found;
+}
+
+/**
+ * On Windows, resolve extensionless command names to .cmd equivalents.
+ * Prevents "choose app to open" dialogs when extensionless Unix shim files
+ * (e.g., 0-byte stubs or shebang scripts) coexist with .cmd wrappers
+ * in the same PATH directory.
+ *
+ * Handles command positions after: line start, pipe |, && / || operators, and semicolons.
+ * Skips content inside quoted strings to avoid false positives.
+ */
+function resolveWindowsCmdExtensions(command: string, pathValue: string): string {
+  if (!isWindows || !command || !pathValue) return command;
+
+  // Replace bare command names at command positions (start, after |, &&, ||, ;)
+  const resolveSegment = (segment: string): string =>
+    segment.replace(
+      /(^\s*|[|;&\r\n]\s*)([a-zA-Z_][\w-]*)(?=$|[\s|;&<>()])/g,
+      (match, prefix: string, cmd: string) => {
+        if (hasCmdInPath(cmd, pathValue)) {
+          console.log(`[pty] Resolved Windows command: ${cmd} -> ${cmd}.cmd`);
+          return `${prefix}${cmd}.cmd`;
+        }
+        return match;
+      }
+    );
+
+  // Split around quoted strings to avoid replacing inside them
+  let result = '';
+  let lastIndex = 0;
+  for (const quoted of command.matchAll(/"[^"]*"|'[^']*'/g)) {
+    const index = quoted.index ?? 0;
+    result += resolveSegment(command.slice(lastIndex, index));
+    result += quoted[0]; // Preserve quoted content as-is
+    lastIndex = index + quoted[0].length;
+  }
+  return result + resolveSegment(command.slice(lastIndex));
+}
+
 export class PtyManager {
   private static instance: PtyManager | null = null;
 
@@ -361,12 +457,13 @@ export class PtyManager {
     const initialCommand = options.initialCommand?.trim();
     if (initialCommand) {
       if (isWindows) {
+        const resolved = resolveWindowsCmdExtensions(initialCommand, getPathValue(options.env));
         const isPowerShell =
           shell.toLowerCase().includes('powershell') || shell.toLowerCase().includes('pwsh');
         if (isPowerShell) {
-          args = ['-NoExit', '-Command', initialCommand];
+          args = ['-NoExit', '-Command', resolved];
         } else {
-          args = ['/k', initialCommand];
+          args = ['/k', resolved];
         }
       } else {
         args = [...args.filter((a) => a !== '-c'), '-c', `${initialCommand}; exec ${shell}`];
