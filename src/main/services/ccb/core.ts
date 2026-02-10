@@ -140,8 +140,12 @@ export class CCBCore {
    * For TUIs like Gemini CLI that run in raw mode, we send the text first,
    * then send CR ('\r') separately after a brief delay. This mimics how
    * a user would type text and then press Enter.
+   *
+   * @param newlineDelayMs - Delay in ms before sending Enter (default: 50).
+   *   ink/React TUIs (e.g. Codex CLI) may need a longer delay (~200ms)
+   *   to allow their render cycle to process the input text first.
    */
-  sendText(paneId: string, text: string, addNewline = false): void {
+  sendText(paneId: string, text: string, addNewline = false, newlineDelayMs = 50): void {
     if (!this.panes.has(paneId)) {
       throw new Error(`Pane not found: ${paneId}`);
     }
@@ -150,11 +154,14 @@ export class CCBCore {
     this.ptyManager.write(paneId, text);
 
     if (addNewline) {
-      // Brief delay before sending Enter to allow TUI to process input
-      // Then send CR ('\r') which is what terminals send when Enter is pressed
+      // Delay before sending Enter to allow TUI to process input.
+      // Default 50ms works for Gemini CLI (Go raw mode); ink-based TUIs
+      // like Codex CLI may need ~200ms via the newlineDelayMs parameter.
+      const normalizedDelay = Number.isFinite(newlineDelayMs) ? newlineDelayMs : 50;
+      const delay = Math.max(0, Math.min(normalizedDelay, 2000));
       setTimeout(() => {
         this.ptyManager.write(paneId, '\r');
-      }, 50);
+      }, delay);
     }
   }
 

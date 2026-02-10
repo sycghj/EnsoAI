@@ -11,6 +11,8 @@ export interface EnsoRPCRequest {
     cwd?: string;
     text?: string;
     add_newline?: boolean;
+    /** Delay in ms before sending newline (default: 50, integer range: 0–2000). */
+    newline_delay_ms?: number;
     lines?: number;
     title?: string;
     env?: Record<string, string>;

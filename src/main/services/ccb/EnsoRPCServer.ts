@@ -209,10 +209,13 @@ export class EnsoRPCServer {
       }
 
       case 'send_text': {
+        const newlineDelayMs =
+          typeof params.newline_delay_ms === 'number' ? params.newline_delay_ms : undefined;
         this.core.sendText(
           params.pane_id as string,
           params.text as string,
-          params.add_newline ?? false
+          params.add_newline ?? false,
+          newlineDelayMs
         );
         return { success: true };
       }
