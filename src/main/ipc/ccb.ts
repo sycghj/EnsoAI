@@ -352,6 +352,7 @@ export function registerCCBHandlers(
   ipcMain.removeHandler(IPC_CHANNELS.CCB_START);
   ipcMain.removeHandler(IPC_CHANNELS.CCB_STOP);
   ipcMain.removeHandler(IPC_CHANNELS.CCB_GET_STATUS);
+  ipcMain.removeHandler(IPC_CHANNELS.CCB_GET_HISTORY);
 
   ipcMain.handle(
     IPC_CHANNELS.CCB_START,
@@ -384,6 +385,22 @@ export function registerCCBHandlers(
         return { status: 'idle', error: 'Invalid cwd' };
       }
       return getStatus(cwd);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.CCB_GET_HISTORY,
+    (_event, ptyId: unknown, lines?: unknown): { text: string; total_lines: number } | null => {
+      if (typeof ptyId !== 'string') return null;
+      const core = rpcServerRef?.getCCBCore();
+      if (!core) return null;
+      const lineCount = typeof lines === 'number' && Number.isFinite(lines) ? lines : 1000;
+      try {
+        return core.getText(ptyId, lineCount);
+      } catch {
+        // Pane not found or other error
+        return null;
+      }
     }
   );
 }

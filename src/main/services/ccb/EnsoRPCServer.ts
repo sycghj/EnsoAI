@@ -244,6 +244,11 @@ export class EnsoRPCServer {
     }
   }
 
+  /** Expose CCBCore for IPC handlers that need direct access (e.g. history retrieval). */
+  getCCBCore(): CCBCore {
+    return this.core;
+  }
+
   getConnectionInfo(): ConnectionInfo {
     return { host: this.host, port: this.port, token: this.token };
   }

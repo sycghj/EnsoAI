@@ -28,6 +28,7 @@ export function CCBPaneTerminal({
   const { containerRef, isLoading, settings } = useXterm({
     cwd: pane.cwd,
     existingPtyId: pane.ptyId, // Attach mode - use existing PTY from CCBCore
+    enableCcbHistoryReplay: true,
     isActive,
     onExit: handleExit,
   });
