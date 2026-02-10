@@ -134,6 +134,20 @@ export class RPCProtocol {
             reason: 'add_newline must be a boolean',
           });
         }
+        if (
+          params.newline_delay_ms !== undefined &&
+          !(
+            typeof params.newline_delay_ms === 'number' &&
+            Number.isFinite(params.newline_delay_ms) &&
+            Number.isInteger(params.newline_delay_ms) &&
+            params.newline_delay_ms >= 0 &&
+            params.newline_delay_ms <= 2000
+          )
+        ) {
+          return this.createErrorResponse(id, -32602, 'Invalid params', {
+            reason: 'newline_delay_ms must be an integer between 0 and 2000',
+          });
+        }
         return null;
       }
 
