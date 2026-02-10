@@ -3,8 +3,8 @@ import { normalizePath, pathsEqual } from '@/App/storage';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
 import { useWorktreeActivityStore } from '@/stores/worktreeActivity';
 
-// Maximum pane slots for 2x2 layout
-const MAX_PANE_SLOTS = 4;
+// Maximum pane slots for 1+2 layout (Claude + Codex + Gemini)
+const MAX_PANE_SLOTS = 3;
 
 type WorktreeKey = string;
 
@@ -21,7 +21,7 @@ export interface CCBPane {
   ptyId: string;
   cwd: string;
   title: string;
-  slotIndex: number; // 0..3 fixed slots for 2x2 layout
+  slotIndex: number; // 0..2 fixed slots for 1+2 layout
   createdAt: number;
 }
 
@@ -29,7 +29,7 @@ export interface CCBPane {
  * Layout configuration for CCB panes.
  */
 export interface CCBPaneLayout {
-  // Active slot index (0..3)
+  // Active slot index (0..2)
   activePaneIndex: number;
 }
 
@@ -384,7 +384,7 @@ export const useCCBPanesStore = create<CCBPanesState>((set, get) => ({
       }
     }
 
-    // Optimistically clear UI state so the 2x2 grid closes immediately
+    // Optimistically clear UI state so the grid closes immediately
     if (keysToClose.length > 0) {
       set((state) => {
         const next = { ...state.worktrees };
