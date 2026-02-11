@@ -558,6 +558,29 @@ function WorktreeItem({
     setMenuOpen(true);
   };
 
+  // Check if click target is a nested interactive element (e.g. GitSyncButton)
+  // to avoid swallowing clicks on child buttons/links
+  const isNestedInteractive = (target: EventTarget | null, container: EventTarget | null) => {
+    if (!(target instanceof HTMLElement) || !(container instanceof HTMLElement)) return false;
+    if (target === container) return false;
+    const interactive = target.closest('button, [role="button"], a, input, select, textarea');
+    return interactive !== null && interactive !== container && container.contains(interactive);
+  };
+
+  const handleItemClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isNestedInteractive(e.target, e.currentTarget)) return;
+    onClick();
+  };
+
+  const handleItemKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.repeat) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   // Adjust menu position if it overflows viewport
   useEffect(() => {
     if (menuOpen && menuRef.current) {
@@ -591,15 +614,17 @@ function WorktreeItem({
       {showDropIndicator && dropDirection === 'top' && (
         <div className="absolute -top-0.5 left-2 right-2 h-0.5 bg-primary rounded-full" />
       )}
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         draggable={draggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
-        onClick={onClick}
+        onClick={handleItemClick}
+        onKeyDown={handleItemKeyDown}
         onContextMenu={handleContextMenu}
         className={cn(
           'relative flex w-full flex-col items-start gap-1 rounded-lg p-3 text-left transition-colors cursor-pointer',
@@ -695,7 +720,7 @@ function WorktreeItem({
             )}
           </div>
         )}
-      </button>
+      </div>
       {/* Drop indicator - bottom */}
       {showDropIndicator && dropDirection === 'bottom' && (
         <div className="absolute -bottom-0.5 left-2 right-2 h-0.5 bg-primary rounded-full" />
