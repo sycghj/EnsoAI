@@ -11,7 +11,12 @@ const listeners = new Set<() => void>();
 let cachedSnapshot = { isWindowFocused, isIdle };
 
 function updateSnapshot() {
-  cachedSnapshot = { isWindowFocused, isIdle };
+  if (
+    isWindowFocused !== cachedSnapshot.isWindowFocused ||
+    isIdle !== cachedSnapshot.isIdle
+  ) {
+    cachedSnapshot = { isWindowFocused, isIdle };
+  }
 }
 
 function notifyListeners() {
