@@ -108,11 +108,11 @@ export class RPCProtocol {
             Number.isFinite(slotIndex) &&
             Number.isInteger(slotIndex) &&
             slotIndex >= 0 &&
-            slotIndex <= 3
+            slotIndex <= 2
           )
         ) {
           return this.createErrorResponse(id, -32602, 'Invalid params', {
-            reason: 'slot_index must be an integer between 0 and 3',
+            reason: 'slot_index must be an integer between 0 and 2',
           });
         }
         return null;

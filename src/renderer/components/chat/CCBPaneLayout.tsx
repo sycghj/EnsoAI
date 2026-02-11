@@ -127,8 +127,8 @@ export function CCBPaneLayout({ isActive = false, worktreePath }: CCBPaneLayoutP
 
   return (
     <div className="relative h-full w-full" data-enso-xterm-focus-scope="ccb">
-      {/* 1+2 layout: Claude top (2fr), Codex+Gemini bottom (1fr) */}
-      <div className="grid h-full w-full grid-rows-[minmax(0,2fr)_minmax(0,1fr)] gap-1">
+      {/* 1+2 layout: Claude top (3fr), Codex+Gemini bottom (2fr) */}
+      <div className="grid h-full w-full grid-rows-[minmax(0,3fr)_minmax(0,2fr)] gap-1">
         {renderSlot(slots[0])}
         <div className="grid min-h-0 grid-cols-2 gap-1">
           {renderSlot(slots[1])}
