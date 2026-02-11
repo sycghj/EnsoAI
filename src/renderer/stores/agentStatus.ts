@@ -9,6 +9,7 @@ export interface StatusData {
     totalInputTokens: number;
     totalOutputTokens: number;
     contextWindowSize: number;
+    usedPercentage?: number;
     currentUsage: {
       inputTokens: number;
       outputTokens: number;
@@ -87,10 +88,18 @@ export function initAgentStatusListener(): () => void {
     }
 
     if (contextWindow) {
+      // Extract official used_percentage when available and valid
+      const usedPercentage =
+        typeof contextWindow.used_percentage === 'number' &&
+        Number.isFinite(contextWindow.used_percentage)
+          ? contextWindow.used_percentage
+          : undefined;
+
       statusData.contextWindow = {
         totalInputTokens: contextWindow.total_input_tokens,
         totalOutputTokens: contextWindow.total_output_tokens,
         contextWindowSize: contextWindow.context_window_size,
+        usedPercentage,
         currentUsage: contextWindow.current_usage
           ? {
               inputTokens: contextWindow.current_usage.input_tokens,

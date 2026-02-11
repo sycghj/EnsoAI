@@ -50,8 +50,23 @@ function formatCost(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
+/** Clamp a numeric value to [0, 100], returning 0 for non-finite inputs. */
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
 function formatContextPercent(status: StatusData): number {
   const { contextWindow } = status;
+
+  // Prefer official used_percentage from Claude Code payload
+  if (typeof contextWindow?.usedPercentage === 'number') {
+    return clampPercent(contextWindow.usedPercentage);
+  }
+
+  // Fallback: manual calculation from current_usage tokens
   if (!contextWindow?.currentUsage || !contextWindow.contextWindowSize) {
     return 0;
   }
@@ -61,7 +76,7 @@ function formatContextPercent(status: StatusData): number {
     currentUsage.inputTokens +
     currentUsage.cacheCreationInputTokens +
     currentUsage.cacheReadInputTokens;
-  return Math.round((totalUsed / contextWindowSize) * 100);
+  return clampPercent((totalUsed / contextWindowSize) * 100);
 }
 
 function formatTokens(input: number, output: number): string {
