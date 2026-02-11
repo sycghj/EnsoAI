@@ -18,7 +18,7 @@ import { defaultDarkTheme, getXtermTheme } from '@/lib/ghosttyTheme';
 import { matchesKeybinding } from '@/lib/keybinding';
 import { cn } from '@/lib/utils';
 import { useAgentSessionsStore } from '@/stores/agentSessions';
-import { initAgentStatusListener } from '@/stores/agentStatus';
+import { initAgentStatusListener, useAgentStatusStore } from '@/stores/agentStatus';
 import { useCodeReviewContinueStore } from '@/stores/codeReviewContinue';
 import { BUILTIN_AGENT_IDS, useSettingsStore } from '@/stores/settings';
 import { useTerminalStore } from '@/stores/terminal';
@@ -280,6 +280,24 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
   const updateGroupState = useAgentSessionsStore((state) => state.updateGroupState);
   const removeGroupState = useAgentSessionsStore((state) => state.removeGroupState);
 
+  // Clear status line data for a closing session, guarded against shared Claude sessionIds.
+  const clearStatus = useAgentStatusStore((state) => state.clearStatus);
+  const clearSessionStatus = useCallback(
+    (session: Session, remainingSessions?: Session[]) => {
+      const statusSessionId = session.sessionId || session.id;
+      const sessionsToCheck =
+        remainingSessions ?? allSessions.filter((s) => s.id !== session.id);
+      // Only clear if no other session maps to the same Claude sessionId
+      const hasRemainingSession = sessionsToCheck.some(
+        (s) => (s.sessionId || s.id) === statusSessionId
+      );
+      if (!hasRemainingSession) {
+        clearStatus(statusSessionId);
+      }
+    },
+    [allSessions, clearStatus]
+  );
+
   // Get current worktree's group state
   const currentGroupState = useMemo(() => {
     if (!cwd) return createInitialGroupState();
@@ -487,8 +505,13 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       );
       if (initializedSessions.length === 0) return;
 
-      // Remove initialized sessions
+      // Pre-compute remaining sessions to avoid stale allSessions during batch removal
+      const closingIds = new Set(initializedSessions.map((s) => s.id));
+      const remainingSessions = allSessions.filter((s) => !closingIds.has(s.id));
+
+      // Remove initialized sessions and clear their status line data
       for (const session of initializedSessions) {
+        clearSessionStatus(session, remainingSessions);
         removeSession(session.id);
       }
 
@@ -500,7 +523,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
     };
 
     return registerAgentCloseHandler(handleCloseAll);
-  }, [registerAgentCloseHandler, setAgentCount, allSessions, removeSession, removeGroupState]);
+  }, [registerAgentCloseHandler, setAgentCount, allSessions, removeSession, removeGroupState, clearSessionStatus]);
 
   // Handle new session in active group
   const handleNewSession = useCallback(
@@ -570,6 +593,9 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       const session = allSessions.find((s) => s.id === id);
       if (!session) return;
 
+      // Clear status line data keyed by Claude session ID before removal
+      clearSessionStatus(session);
+
       // Remove the session from Zustand store
       removeSession(id);
 
@@ -628,7 +654,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
         };
       });
     },
-    [allSessions, removeSession, updateCurrentGroupState]
+    [allSessions, clearSessionStatus, removeSession, updateCurrentGroupState]
   );
 
   // Handle session selection
@@ -709,9 +735,9 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
           activityState !== 'waiting_input';
 
         // Auto popup enhanced input if enabled
-        // Now we set the open state in store - it persists per session
+        // Now we set the open state in store - it persists per session (keyed by UI session.id)
         if (shouldAutoPopup) {
-          setEnhancedInputOpen(sessionId, true);
+          setEnhancedInputOpen(session.id, true);
         }
 
         // Send system notification
@@ -1557,6 +1583,14 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
         if (!position) return null;
 
         const isActiveGroup = group.id === activeGroupId;
+        // Resolve the Claude session ID for StatusLine (may differ from UI session.id)
+        const activeSession =
+          group.activeSessionId != null
+            ? allSessions.find((s) => s.id === group.activeSessionId)
+            : undefined;
+        const statusSessionId = activeSession
+          ? activeSession.sessionId || activeSession.id
+          : group.activeSessionId;
         const sender =
           isActiveGroup && group.activeSessionId
             ? enhancedInputSenderRef.current.get(group.activeSessionId)
@@ -1604,7 +1638,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
                     isActive={isActive}
                   />
                 )}
-              {statusLineEnabled && <StatusLine sessionId={group.activeSessionId} />}
+              {statusLineEnabled && <StatusLine sessionId={statusSessionId} />}
             </GroupBottomBar>
           </div>
         );
