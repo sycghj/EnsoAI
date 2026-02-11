@@ -74,6 +74,7 @@ export const IPC_CHANNELS = {
   // Files
   FILE_READ: 'file:read',
   FILE_WRITE: 'file:write',
+  FILE_SAVE_TO_TEMP: 'file:save-to-temp',
   FILE_CREATE: 'file:create',
   FILE_CREATE_DIR: 'file:createDir',
   FILE_RENAME: 'file:rename',
@@ -133,6 +134,10 @@ export const IPC_CHANNELS = {
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   WINDOW_MAXIMIZED_CHANGED: 'window:maximizedChanged',
   WINDOW_OPEN_DEVTOOLS: 'window:openDevTools',
+  WINDOW_DEVTOOLS_STATE_CHANGED: 'window:devtools:stateChanged',
+  WINDOW_SET_TRAFFIC_LIGHTS_VISIBLE: 'window:setTrafficLightsVisible',
+  WINDOW_IS_FULLSCREEN: 'window:isFullScreen',
+  WINDOW_FULLSCREEN_CHANGED: 'window:fullScreenChanged',
 
   // Dialog
   DIALOG_OPEN_DIRECTORY: 'dialog:openDirectory',

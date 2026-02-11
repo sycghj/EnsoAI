@@ -256,7 +256,10 @@ export function RepositorySidebar({
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((repo) => repo.name.toLowerCase().includes(query));
     }
-    return filtered.map((repo) => ({ repo, originalIndex: repositories.indexOf(repo) }));
+    return filtered.map((repo) => ({
+      repo,
+      originalIndex: repositories.indexOf(repo),
+    }));
   }, [repositories, activeGroupId, searchQuery]);
 
   const groupedSections = useMemo(() => {
@@ -433,7 +436,7 @@ export function RepositorySidebar({
 
       {/* Search */}
       <div className="px-3 py-2">
-        <div className="flex h-8 items-center gap-2 rounded-lg border bg-background px-2">
+        <div className="flex h-8 items-center gap-2 rounded-lg border px-2">
           <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
           <input
             type="text"

@@ -89,11 +89,16 @@ function useTerminalSettings() {
     terminalScrollback,
     terminalOptionIsMeta,
     xtermKeybindings,
+    backgroundImageEnabled,
   } = useSettingsStore();
 
   const theme = useMemo(() => {
-    return getXtermTheme(terminalTheme) ?? defaultDarkTheme;
-  }, [terminalTheme]);
+    const baseTheme = getXtermTheme(terminalTheme) ?? defaultDarkTheme;
+    if (backgroundImageEnabled) {
+      return { ...baseTheme, background: 'transparent' };
+    }
+    return baseTheme;
+  }, [terminalTheme, backgroundImageEnabled]);
 
   return {
     theme,
@@ -104,6 +109,7 @@ function useTerminalSettings() {
     scrollback: terminalScrollback,
     optionIsMeta: terminalOptionIsMeta,
     xtermKeybindings,
+    backgroundImageEnabled,
   };
 }
 
@@ -293,7 +299,7 @@ export function useXterm({
       scrollback: settings.scrollback,
       macOptionIsMeta: settings.optionIsMeta,
       allowProposedApi: true,
-      allowTransparency: false,
+      allowTransparency: settings.backgroundImageEnabled,
       rescaleOverlappingGlyphs: true,
     });
 
@@ -699,6 +705,8 @@ export function useXterm({
       terminalRef.current.options.fontFamily = settings.fontFamily;
       terminalRef.current.options.fontWeight = settings.fontWeight;
       terminalRef.current.options.fontWeightBold = settings.fontWeightBold;
+      // Update transparency options dynamically
+      terminalRef.current.options.allowTransparency = settings.backgroundImageEnabled;
       fitAddonRef.current?.fit();
     }
   }, [settings]);

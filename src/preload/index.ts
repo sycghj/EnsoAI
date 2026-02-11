@@ -295,6 +295,11 @@ const electronAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
     write: (filePath: string, content: string, encoding?: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, filePath, content, encoding),
+    saveToTemp: (
+      filename: string,
+      data: Uint8Array
+    ): Promise<{ success: boolean; path?: string; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_SAVE_TO_TEMP, filename, data),
     createFile: (
       filePath: string,
       content = '',
@@ -574,6 +579,19 @@ const electronAPI = {
       const handler = (_: unknown, isMaximized: boolean) => callback(isMaximized);
       ipcRenderer.on(IPC_CHANNELS.WINDOW_MAXIMIZED_CHANGED, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.WINDOW_MAXIMIZED_CHANGED, handler);
+    },
+    onDevToolsStateChange: (callback: (isOpen: boolean) => void): (() => void) => {
+      const handler = (_: unknown, isOpen: boolean) => callback(isOpen);
+      ipcRenderer.on(IPC_CHANNELS.WINDOW_DEVTOOLS_STATE_CHANGED, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.WINDOW_DEVTOOLS_STATE_CHANGED, handler);
+    },
+    setTrafficLightsVisible: (visible: boolean): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_TRAFFIC_LIGHTS_VISIBLE, visible),
+    isFullScreen: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_FULLSCREEN),
+    onFullScreenChange: (callback: (isFullScreen: boolean) => void): (() => void) => {
+      const handler = (_: unknown, isFullScreen: boolean) => callback(isFullScreen);
+      ipcRenderer.on(IPC_CHANNELS.WINDOW_FULLSCREEN_CHANGED, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.WINDOW_FULLSCREEN_CHANGED, handler);
     },
   },
 
