@@ -146,6 +146,7 @@ export function useXterm({
   const exitCleanupRef = useRef<(() => void) | null>(null);
   const shouldDestroyPtyOnUnmountRef = useRef(true);
   const linkProviderDisposableRef = useRef<{ dispose: () => void } | null>(null);
+  const xtVersionHandlerRef = useRef<{ dispose: () => void } | null>(null);
   const rendererAddonRef = useRef<{ dispose: () => void } | null>(null);
   const copyOnSelectionHandlerRef = useRef<(() => void) | null>(null);
   const onExitRef = useRef(onExit);
@@ -620,6 +621,16 @@ export function useXterm({
         }
       }
 
+      // Suppress XTVERSION (CSI > 0 q) response in attach mode.
+      // Some CLIs (e.g. Gemini) send XTVERSION queries; xterm.js responds with
+      // DCS >|xterm.js(VERSION) ST via triggerDataEvent, which the CLI echoes as
+      // visible text. Registering a custom handler that returns true (handled)
+      // without writing any response prevents the echo.
+      xtVersionHandlerRef.current = terminal.parser.registerCsiHandler(
+        { prefix: '>', final: 'q' },
+        () => true
+      );
+
       attachToPty(attachPtyId);
       // Sync PTY size to current xterm size when attaching.
       window.electronAPI.terminal.resize(attachPtyId, { cols: terminal.cols, rows: terminal.rows });
@@ -688,6 +699,8 @@ export function useXterm({
         copyOnSelectionHandlerRef.current = null;
       }
       // Dispose addons before terminal to prevent async callback errors
+      xtVersionHandlerRef.current?.dispose();
+      xtVersionHandlerRef.current = null;
       linkProviderDisposableRef.current?.dispose();
       linkProviderDisposableRef.current = null;
       rendererAddonRef.current?.dispose();
