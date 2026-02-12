@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import 'electron-log/preload.js';
 import type { Locale } from '@shared/i18n';
 import type {
   AgentCliInfo,
@@ -148,6 +149,7 @@ const electronAPI = {
         reviewId: string;
         language?: string;
         sessionId?: string; // Restore this parameter for "Continue Conversation"
+        prompt?: string; // Custom prompt template
       }
     ): Promise<{ success: boolean; error?: string; sessionId?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_CODE_REVIEW_START, workdir, options),
@@ -608,18 +610,26 @@ const electronAPI = {
       ipcRenderer.on(IPC_CHANNELS.NOTIFICATION_CLICK, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.NOTIFICATION_CLICK, handler);
     },
-    onAgentStop: (callback: (data: { sessionId: string }) => void): (() => void) => {
-      const handler = (_: unknown, data: { sessionId: string }) => callback(data);
+    onAgentStop: (callback: (data: { sessionId: string; cwd?: string }) => void): (() => void) => {
+      const handler = (_: unknown, data: { sessionId: string; cwd?: string }) => callback(data);
       ipcRenderer.on(IPC_CHANNELS.AGENT_STOP_NOTIFICATION, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.AGENT_STOP_NOTIFICATION, handler);
     },
     onAskUserQuestion: (
-      callback: (data: { sessionId: string; toolInput: unknown }) => void
+      callback: (data: { sessionId: string; toolInput: unknown; cwd?: string }) => void
     ): (() => void) => {
-      const handler = (_: unknown, data: { sessionId: string; toolInput: unknown }) =>
+      const handler = (_: unknown, data: { sessionId: string; toolInput: unknown; cwd?: string }) =>
         callback(data);
       ipcRenderer.on(IPC_CHANNELS.AGENT_ASK_USER_QUESTION_NOTIFICATION, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.AGENT_ASK_USER_QUESTION_NOTIFICATION, handler);
+    },
+    onPreToolUse: (
+      callback: (data: { sessionId: string; toolName: string; cwd?: string }) => void
+    ): (() => void) => {
+      const handler = (_: unknown, data: { sessionId: string; toolName: string; cwd?: string }) =>
+        callback(data);
+      ipcRenderer.on(IPC_CHANNELS.AGENT_PRE_TOOL_USE_NOTIFICATION, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.AGENT_PRE_TOOL_USE_NOTIFICATION, handler);
     },
     onAgentStatusUpdate: (
       callback: (data: {
@@ -813,6 +823,7 @@ const electronAPI = {
       telegramBotToken: string;
       webappUrl: string;
       allowedChatIds: string;
+      runnerEnabled?: boolean;
     }): Promise<{
       running: boolean;
       ready?: boolean;
@@ -828,6 +839,7 @@ const electronAPI = {
       telegramBotToken: string;
       webappUrl: string;
       allowedChatIds: string;
+      runnerEnabled?: boolean;
     }): Promise<{
       running: boolean;
       ready?: boolean;
@@ -857,6 +869,35 @@ const electronAPI = {
       ) => callback(status);
       ipcRenderer.on(IPC_CHANNELS.HAPI_STATUS_CHANGED, handler);
       return () => ipcRenderer.off(IPC_CHANNELS.HAPI_STATUS_CHANGED, handler);
+    },
+  },
+
+  // Hapi Runner
+  hapiRunner: {
+    start: (): Promise<{
+      running: boolean;
+      pid?: number;
+      error?: string;
+    }> => ipcRenderer.invoke(IPC_CHANNELS.HAPI_RUNNER_START),
+    stop: (): Promise<{
+      running: boolean;
+      pid?: number;
+      error?: string;
+    }> => ipcRenderer.invoke(IPC_CHANNELS.HAPI_RUNNER_STOP),
+    getStatus: (): Promise<{
+      running: boolean;
+      pid?: number;
+      error?: string;
+    }> => ipcRenderer.invoke(IPC_CHANNELS.HAPI_RUNNER_GET_STATUS),
+    onStatusChanged: (
+      callback: (status: { running: boolean; pid?: number; error?: string }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        status: { running: boolean; pid?: number; error?: string }
+      ) => callback(status);
+      ipcRenderer.on(IPC_CHANNELS.HAPI_RUNNER_STATUS_CHANGED, handler);
+      return () => ipcRenderer.off(IPC_CHANNELS.HAPI_RUNNER_STATUS_CHANGED, handler);
     },
   },
 
@@ -936,6 +977,16 @@ const electronAPI = {
       ipcRenderer.on('web-inspector:data', handler);
       return () => ipcRenderer.off('web-inspector:data', handler);
     },
+  },
+
+  // Logging
+  log: {
+    updateConfig: (config: {
+      enabled: boolean;
+      level: 'error' | 'warn' | 'info' | 'debug';
+    }): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.LOG_UPDATE_CONFIG, config),
+    openFolder: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.LOG_OPEN_FOLDER),
+    getPath: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.LOG_GET_PATH),
   },
 
   // Utilities

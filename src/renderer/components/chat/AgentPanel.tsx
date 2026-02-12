@@ -103,8 +103,10 @@ function createSession(
   const customPath = agentConfig?.customPath;
   const customArgs = agentConfig?.customArgs;
 
+  const id = crypto.randomUUID();
   return {
-    id: crypto.randomUUID(),
+    id,
+    sessionId: id, // Initialize sessionId with same value as id
     name: displayName,
     agentId,
     agentCommand: info.command,
@@ -903,8 +905,10 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
       const customPath = agentConfig?.customPath;
       const customArgs = agentConfig?.customArgs;
 
+      const id = crypto.randomUUID();
       const newSession: Session = {
-        id: crypto.randomUUID(),
+        id,
+        sessionId: id, // Initialize sessionId with same value as id
         name,
         agentId,
         agentCommand,

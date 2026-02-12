@@ -89,6 +89,7 @@ export const zhTranslations: Record<string, string> = {
   'Check for updates': '检查更新',
   'Check failed': '检查失败',
   'Checking...': '检查中...',
+  characters: '字符',
   Chat: '聊天',
   'Choose base branch...': '选择基准分支...',
   'Choose branch...': '选择分支...',
@@ -818,12 +819,21 @@ export const zhTranslations: Record<string, string> = {
   'Show code review button in source control': '在版本控制中显示代码审查按钮',
   'Claude model for code review': '用于代码审查的 Claude 模型',
   'Language for code review output': '代码审查输出语言',
+  'Code Review Prompt': '代码审查提示词',
+  'Customize the AI prompt for code review': '自定义代码审查的 AI 提示词',
+  'This will restore the default AI prompt for code review. Your custom prompt will be lost.':
+    '这将恢复代码审查的默认 AI 提示词。您的自定义提示词将丢失。',
+  'Enter a prompt template for code review.\nAvailable variables:\n• {language} - Review output language\n• {git_diff} - Git diff of changes\n• {git_log} - Commit history':
+    '输入代码审查的提示词模板。\n可用变量：\n• {language} - 审查输出语言\n• {git_diff} - 变更的 Git diff\n• {git_log} - 提交历史',
   'Continue Conversation': '继续对话',
   'Preserve session for follow-up conversations after review': '审查后保留 session 以便继续对话',
   Review: '审查',
   'Reviewing...': '审查中...',
   'View code review': '查看代码审查',
   Minimize: '最小化',
+  'Missing required variable: {git_diff}': '缺少必需变量：{git_diff}',
+  'Missing recommended variable: {language}': '缺少推荐变量：{language}',
+  'Missing recommended variable: {git_log}': '缺少推荐变量：{git_log}',
   'Start code review': '开始代码审查',
   'Initializing...': '初始化中...',
   'Reviewing code...': '正在审查代码...',
@@ -1003,6 +1013,10 @@ export const zhTranslations: Record<string, string> = {
   'Starting...': '启动中...',
   'Use HTTP/2 Protocol': '使用 HTTP/2 协议',
   'More compatible than QUIC when behind firewalls': '在防火墙后比 QUIC 更兼容',
+  'Enable Remote Spawn (Runner)': '启用远程创建会话 (Runner)',
+  'Automatically start Hapi Runner with Hapi service for remote session spawning':
+    '随 Hapi 服务自动启动 Hapi Runner，以支持远程创建新会话',
+  '(Changes apply after service restart)': '（重启服务生效）',
   // Happy
   'Happy Agents': 'Happy Agent',
   'Agents running through Happy': '通过 Happy 运行的 Agent',
@@ -1119,6 +1133,7 @@ export const zhTranslations: Record<string, string> = {
   'Prompt activated': '提示词已激活',
   'Failed to activate prompt': '激活提示词失败',
   'Prompt saved': '提示词已保存',
+  'Prompt template cannot be empty': '提示词模板不能为空',
   'Current CLAUDE.md not saved': '当前内容未保存为预设',
   'Edit Prompt': '编辑提示词',
   'Add Prompt': '添加提示词',
@@ -1200,6 +1215,8 @@ export const zhTranslations: Record<string, string> = {
   'Running on port {{port}}': '正在端口 {{port}} 运行',
   Stopped: '已停止',
   Unknown: '未知',
+  'Unknown variable:': '未知变量：',
+  'Unmatched braces detected in template': '模板中检测到不匹配的花括号',
   'Userscript Installation': '用户脚本安装',
   'Install the userscript to enable element inspection in your browser':
     '安装用户脚本以在浏览器中启用元素检查',
@@ -1222,6 +1239,27 @@ export const zhTranslations: Record<string, string> = {
   'Copy on Selection': '选中即复制',
   'Automatically copy selected text in the terminal to the clipboard':
     '自动将终端中选中的文本复制到剪贴板',
+  // Logging
+  Logging: '日志记录',
+  'Enable Logging': '启用日志',
+  'Enable logging to help diagnose issues. Logs are stored locally and never uploaded.':
+    '启用日志记录以帮助诊断问题。日志存储在本地，不会上传。',
+  'Log Level': '日志级别',
+  Error: '错误',
+  Warning: '警告',
+  Info: '信息',
+  Debug: '调试',
+  'Only critical errors': '仅关键错误',
+  'Errors and warnings': '错误和警告',
+  'General information': '常规信息',
+  'Detailed diagnostic information': '详细诊断信息',
+  'Log Files': '日志文件',
+  'Open Log Folder': '打开日志文件夹',
+  'Log Retention': '日志保留',
+  '7 days': '7 天',
+  '14 days': '14 天',
+  '30 days': '30 天',
+  'Old log files will be automatically deleted': '旧日志文件将被自动删除',
 };
 
 export function normalizeLocale(input?: string): Locale {

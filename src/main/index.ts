@@ -40,6 +40,7 @@ import {
 import { registerCCBHandlers, updateCCBRpcServer } from './ipc/ccb';
 import { initClaudeProviderWatcher } from './ipc/claudeProvider';
 import { cleanupTempFiles } from './ipc/files';
+import { readSettings } from './ipc/settings';
 import { registerWindowHandlers } from './ipc/window';
 import { EnsoRPCServer } from './services/ccb/EnsoRPCServer';
 import { registerClaudeBridgeIpcHandlers } from './services/claude/ClaudeIdeBridge';
@@ -53,6 +54,7 @@ import { gitAutoFetchService } from './services/git/GitAutoFetchService';
 import { setCurrentLocale } from './services/i18n';
 import { buildAppMenu } from './services/MenuBuilder';
 import { webInspectorServer } from './services/webInspector';
+import log, { initLogger } from './utils/logger';
 import { createMainWindow } from './windows/MainWindow';
 
 let mainWindow: BrowserWindow | null = null;
@@ -216,6 +218,23 @@ async function initAutoUpdater(window: BrowserWindow): Promise<void> {
 }
 
 async function init(): Promise<void> {
+  // Initialize logger from settings
+  const settings = readSettings();
+  const ensoSettings = settings?.['enso-settings'] as
+    | {
+        state?: {
+          loggingEnabled?: boolean;
+          logLevel?: string;
+          logRetentionDays?: number;
+        };
+      }
+    | undefined;
+  const loggingEnabled = (ensoSettings?.state?.loggingEnabled as boolean) ?? false;
+  const logLevel = (ensoSettings?.state?.logLevel as 'error' | 'warn' | 'info' | 'debug') ?? 'info';
+  const logRetentionDays = (ensoSettings?.state?.logRetentionDays as number) ?? 7;
+  initLogger(loggingEnabled, logLevel, logRetentionDays);
+  log.info('EnsoAI started');
+
   // Check Git installation
   const gitInstalled = await checkGitInstalled();
   if (!gitInstalled) {

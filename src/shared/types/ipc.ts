@@ -112,6 +112,7 @@ export const IPC_CHANNELS = {
   AGENT_LIST: 'agent:list',
   AGENT_STOP_NOTIFICATION: 'agent:stop:notification',
   AGENT_ASK_USER_QUESTION_NOTIFICATION: 'agent:askUserQuestion:notification',
+  AGENT_PRE_TOOL_USE_NOTIFICATION: 'agent:preToolUse:notification',
   AGENT_STATUS_UPDATE: 'agent:status:update',
 
   // App
@@ -238,6 +239,12 @@ export const IPC_CHANNELS = {
   HAPI_GET_STATUS: 'hapi:getStatus',
   HAPI_STATUS_CHANGED: 'hapi:statusChanged',
 
+  // Hapi Runner
+  HAPI_RUNNER_START: 'hapiRunner:start',
+  HAPI_RUNNER_STOP: 'hapiRunner:stop',
+  HAPI_RUNNER_GET_STATUS: 'hapiRunner:getStatus',
+  HAPI_RUNNER_STATUS_CHANGED: 'hapiRunner:statusChanged',
+
   // Cloudflared Tunnel
   CLOUDFLARED_CHECK: 'cloudflared:check',
   CLOUDFLARED_INSTALL: 'cloudflared:install',
@@ -245,6 +252,11 @@ export const IPC_CHANNELS = {
   CLOUDFLARED_STOP: 'cloudflared:stop',
   CLOUDFLARED_GET_STATUS: 'cloudflared:getStatus',
   CLOUDFLARED_STATUS_CHANGED: 'cloudflared:statusChanged',
+
+  // Logging
+  LOG_UPDATE_CONFIG: 'log:update-config',
+  LOG_OPEN_FOLDER: 'log:open-folder',
+  LOG_GET_PATH: 'log:get-path',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

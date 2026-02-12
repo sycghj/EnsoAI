@@ -644,7 +644,7 @@ export function TreeSidebar({
           />
         )}
         {/* Repository row */}
-        <RepoItemWithGlow repoPath={repo.path}>
+        <div>
           {/* Drop indicator - top */}
           {dropRepoTargetIndex === originalIndex &&
             draggedRepoIndexRef.current !== null &&
@@ -767,7 +767,7 @@ export function TreeSidebar({
             draggedRepoIndexRef.current < originalIndex && (
               <div className="absolute -bottom-0.5 left-2 right-2 h-0.5 bg-primary rounded-full" />
             )}
-        </RepoItemWithGlow>
+        </div>
 
         {/* Worktrees under this repo */}
         <AnimatePresence initial={false}>
@@ -1570,19 +1570,20 @@ function WorktreeTreeItem({
   const activityState = activityStates[worktree.path] || 'idle';
   const closeAgentSessions = useWorktreeActivityStore((s) => s.closeAgentSessions);
   const closeTerminalSessions = useWorktreeActivityStore((s) => s.closeTerminalSessions);
-  const clearActivityState = useWorktreeActivityStore((s) => s.clearActivityState);
   const hasActivity = activity.agentCount > 0 || activity.terminalCount > 0;
   const hasDiffStats = diffStats.insertions > 0 || diffStats.deletions > 0;
 
   // Auto-clear completed state after 5 seconds when worktree is active
+  const COMPLETED_STATE_DURATION_MS = 5000;
   useEffect(() => {
     if (isActive && activityState === 'completed') {
       const timer = setTimeout(() => {
-        clearActivityState(worktree.path);
-      }, 5000);
+        // Use getState() to avoid stale closure and dependency array issues
+        useWorktreeActivityStore.getState().clearActivityState(worktree.path);
+      }, COMPLETED_STATE_DURATION_MS);
       return () => clearTimeout(timer);
     }
-  }, [isActive, activityState, worktree.path, clearActivityState]);
+  }, [isActive, activityState, worktree.path]);
 
   // Check if any session in this worktree has outputting or unread state
   const outputState = useWorktreeOutputState(worktree.path);
@@ -1776,11 +1777,11 @@ function WorktreeTreeItem({
         </span>
         {/* Button with optional glow border */}
         {glowEnabled ? (
-          <GlowBorder state={outputState as GlowState} className="rounded-xl flex-1 min-w-0">
+          <GlowBorder state={activityState as GlowState} className="rounded-lg flex-1 min-w-0">
             {buttonContent}
           </GlowBorder>
         ) : (
-          <div className="relative rounded-xl flex-1 min-w-0">{buttonContent}</div>
+          <div className="relative rounded-lg flex-1 min-w-0">{buttonContent}</div>
         )}
       </div>
 
