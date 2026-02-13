@@ -287,8 +287,7 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
   const clearSessionStatus = useCallback(
     (session: Session, remainingSessions?: Session[]) => {
       const statusSessionId = session.sessionId || session.id;
-      const sessionsToCheck =
-        remainingSessions ?? allSessions.filter((s) => s.id !== session.id);
+      const sessionsToCheck = remainingSessions ?? allSessions.filter((s) => s.id !== session.id);
       // Only clear if no other session maps to the same Claude sessionId
       const hasRemainingSession = sessionsToCheck.some(
         (s) => (s.sessionId || s.id) === statusSessionId
@@ -525,7 +524,14 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
     };
 
     return registerAgentCloseHandler(handleCloseAll);
-  }, [registerAgentCloseHandler, setAgentCount, allSessions, removeSession, removeGroupState, clearSessionStatus]);
+  }, [
+    registerAgentCloseHandler,
+    setAgentCount,
+    allSessions,
+    removeSession,
+    removeGroupState,
+    clearSessionStatus,
+  ]);
 
   // Handle new session in active group
   const handleNewSession = useCallback(
@@ -1398,19 +1404,21 @@ export function AgentPanel({ repoPath, cwd, isActive = false, onSwitchWorktree }
                     <div className="flex items-center justify-between px-2 py-1">
                       <span className="text-xs text-muted-foreground">{t('Select Agent')}</span>
                       <Tooltip>
-                        <TooltipTrigger>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowAgentMenu(false);
-                              window.dispatchEvent(new CustomEvent('open-settings-agent'));
-                            }}
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                          >
-                            <Settings className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
+                        <TooltipTrigger
+                          render={
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowAgentMenu(false);
+                                window.dispatchEvent(new CustomEvent('open-settings-agent'));
+                              }}
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                            >
+                              <Settings className="h-3.5 w-3.5" />
+                            </button>
+                          }
+                        />
                         <TooltipPopup side="right">{t('Manage Agents')}</TooltipPopup>
                       </Tooltip>
                     </div>
